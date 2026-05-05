@@ -283,7 +283,7 @@ shimcurve_columns = SearchColumns(
         MathCol("level", "shimcurve.level", "Level"),
         MathCol("index", "shimcurve.index", "Index"),
         MathCol("discB", "shimcurve.discb", r"$\operatorname{Disc}(B)$"),
-        MathCol("discO", "shimcurve.disco", r"$\operatorname{nrd}(O)$"),
+        MathCol("discO", "shimcurve.disco", r"$\operatorname{discrd}(O)$"),
         MathCol("genus", "shimcurve.genus", "Genus"),
         ProcessedCol("rank", "shimcurve.rank", "Rank", lambda r: "" if r is None else r, default=lambda info: info.get("rank") or info.get("genus_minus_rank"), align="center", mathmode=True),
         ProcessedCol("q_gonality_bounds", "shimcurve.gonality", r"$\Q$-gonality", lambda b: r'$%s$'%(b[0]) if b[0] == b[1] else r'$%s \le \gamma \le %s$'%(b[0],b[1]), align="center", short_title="Q-gonality"),
