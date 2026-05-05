@@ -662,6 +662,7 @@ class WebShimCurve(WebObj):
             order = db.quaternion_orders.lookup(self.order_label, ['area_numerator', 'area_denominator'])
             area = order['area_numerator'] / QQ(order['area_denominator']);
             area /= db.quaternion_orders_polarized.lookup(self.mu_label, 'AutmuO_size');
+            area *= self.aut_gerbiness
             index = self.fuchsian_index
             if index == 1:
                 genus_str += r" = 1 + \frac{%s}{%s}" % (area.numerator(), area.denominator())
