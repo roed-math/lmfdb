@@ -26,8 +26,8 @@
 <h2> {{ KNOWL('shimcurve.level_structure', 'Level structure') }} </h2>
 
 <table>
-  <tr><td>{{ KNOWL('shimcurve.level_structure', '$\Aut_{\mu}(O) \ltimes (O/%sO)^{\\times}$-generators'%(curve.level)) }}:</td><td><small>{{ curve.show_generators()}}</small></td></tr>
-  <tr><td>{{ KNOWL('shimcurve.level_structure', '$H \le \Aut_{\mu}(O) \ltimes (O/%sO)^{\\times}$'%(curve.level)) }}:</td><td>{{ curve.show_group()  | safe }}</td></tr>
+  <tr><td>{{ KNOWL('shimcurve.level_structure', '$\Aut_{\pm\mu}(O) \ltimes (O/%sO)^{\\times}$-generators'%(curve.level)) }}:</td><td><small>{{ curve.show_generators()}}</small></td></tr>
+  <tr><td>{{ KNOWL('shimcurve.level_structure', '$H \le \Aut_{\pm\mu}(O) \ltimes (O/%sO)^{\\times}$'%(curve.level)) }}:</td><td>{{ curve.show_group()  | safe }}</td></tr>
   <tr><td>{{ KNOWL('shimcurve.is_coarse', 'Is coarse') }}:</td><td> {{ curve.coarse_description | safe }}</td></tr>
   {% if curve.is_coarse %}
   <tr><td>{{ KNOWL('shimcurve.quadratic_refinements', 'Quadratic refinements') }}:</td><td> {{ curve.quadratic_refinements | safe }}</td></tr>
