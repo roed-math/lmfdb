@@ -284,6 +284,7 @@ shimcurve_columns = SearchColumns(
         MathCol("index", "shimcurve.index", "Index"),
         MathCol("discB", "shimcurve.discb", r"$\operatorname{Disc}(B)$"),
         MathCol("discO", "shimcurve.disco", r"$\operatorname{discrd}(O)$"),
+        MathCol("deg_mu", "shimcurve.nrdmu", "Polarization degree"),
         MathCol("genus", "shimcurve.genus", "Genus"),
         ProcessedCol("rank", "shimcurve.rank", "Rank", lambda r: "" if r is None else r, default=lambda info: info.get("rank") or info.get("genus_minus_rank"), align="center", mathmode=True),
         ProcessedCol("q_gonality_bounds", "shimcurve.gonality", r"$\Q$-gonality", lambda b: r'$%s$'%(b[0]) if b[0] == b[1] else r'$%s \le \gamma \le %s$'%(b[0],b[1]), align="center", short_title="Q-gonality"),
@@ -298,7 +299,7 @@ shimcurve_columns = SearchColumns(
         CheckCol("pointless", "shimcurve.local_obstruction", "Local obstruction", default=False),
         ProcessedCol("generators", "shimcurve.level_structure", r"$N_{B^{\times}}(O) \ltimes \operatorname{GL}_2(\mathbb{Z}/N\mathbb{Z})$-generators", lambda gens: ", ".join(r"$ \langle %s+%si+%sj+%sk, \begin{bmatrix}%s&%s\\%s&%s\end{bmatrix}$" % tuple(g) for g in gens) if gens else "trivial subgroup", short_title="generators", default=False),
     ],
-    db_cols=["label", "name", "level", "index", "discB", "discO", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
+    db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
 
 @search_parser
 def parse_family(inp, query, qfield):
@@ -588,11 +589,14 @@ def shimcurve_search(info, query):
     parse_ints(info, query, "genus")
     parse_ints(info, query, "discB")
     parse_ints(info, query, "discO")
+    parse_ints(info, query, "deg_mu")
     parse_ints(info, query, "rank")
     parse_ints(info, query, "genus_minus_rank")
     parse_interval(info, query, "q_gonality", quantifier_type=info.get("gonality_type", "exactly"))
     parse_ints(info, query, "nu2")
     parse_ints(info, query, "nu3")
+    parse_ints(info, query, "nu4")
+    parse_ints(info, query, "nu6")
     if not info.get("points_type"): # default, which is non-cuspidal
         parse_ints(info, query, "points", qfield="num_known_degree1_noncusp_points")
     elif info["points_type"] == "noncm":
@@ -691,6 +695,13 @@ class ShimCurveSearchArray(SearchArray):
             example="6",
             example_span="6",
         )
+        deg_mu = TextBox(
+            name="deg_mu",
+            knowl="shimcurve.nrdmu",
+            label=r"Polarization degree",
+            example="1",
+            example_span="1",
+        )
         rank = TextBox(
             name="rank",
             knowl="shimcurve.rank",
@@ -735,12 +746,26 @@ class ShimCurveSearchArray(SearchArray):
             example="1",
             example_span="1,3-5",
         )
-        factor = TextBox(
-            name="factor",
-            knowl="shimcurve.fiber_product",
-            label="Fiber product with",
-            example="3.4.0.a.1",
+        nu4 = TextBox(
+            name="nu4",
+            knowl="shimcurve.elliptic_points",
+            label="Elliptic points of order 4",
+            example="1",
+            example_span="1,3-5",
         )
+        nu6 = TextBox(
+            name="nu6",
+            knowl="shimcurve.elliptic_points",
+            label="Elliptic points of order 6",
+            example="1",
+            example_span="1,3-5",
+        )
+        #factor = TextBox(
+        #    name="factor",
+        #    knowl="shimcurve.fiber_product",
+        #    label="Fiber product with",
+        #    example="3.4.0.a.1",
+        #)
         covers = TextBox(
             name="covers",
             knowl="shimcurve.modular_cover",
@@ -820,12 +845,13 @@ class ShimCurveSearchArray(SearchArray):
 
         self.browse_array = [
             [level, index],
-            [genus, rank],
-            [discB, discO],
-            [genus_minus_rank, gonality],
+            [genus, discB],
+            [discO, deg_mu],
+            [rank, genus_minus_rank],
             [nu2, nu3],
-            [simple, squarefree],
-            [cm_discriminants, factor],
+            [nu4, nu6],
+            [gonality, simple],
+            [squarefree, cm_discriminants],
             [covers, covered_by],
             [is_coarse, family],
             [points, obstructions],
@@ -833,17 +859,19 @@ class ShimCurveSearchArray(SearchArray):
         ]
 
         self.refine_array = [
-            [level, index, genus, discB, discO, rank, genus_minus_rank],
-            [gonality, nu2, nu3],
-            [simple, squarefree, cm_discriminants, factor, covers],
+            [level, index, discB, discO, deg_mu], 
+            [genus, rank, genus_minus_rank, gonality],
+            [nu2, nu3, nu4, nu6],
+            #[simple, squarefree, cm_discriminants, factor, covers],
+            [simple, squarefree, cm_discriminants, covers],
             [covered_by, is_coarse, points, obstructions, family],
         ]
 
     sorts = [
-        ("", "level", ["level", "index", "genus", "label"]),
-        ("index", "index", ["index", "level", "genus", "label"]),
-        ("genus", "genus", ["genus", "level", "index", "label"]),
-        ("rank", "rank", ["rank", "genus", "level", "index", "label"]),
+        ("", "level", ["level", "deg_mu", "index", "genus", "label"]),
+        ("index", "index", ["index", "level", "deg_mu", "genus", "label"]),
+        ("genus", "genus", ["genus", "level", "deg_mu", "index", "label"]),
+        ("rank", "rank", ["rank", "genus", "level", "deg_mu", "index", "label"]),
     ]
     null_column_explanations = {
         'simple': False,
