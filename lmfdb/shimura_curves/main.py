@@ -291,14 +291,14 @@ shimcurve_columns = SearchColumns(
         ProcessedCol("conductor", "ag.conductor", "Conductor", factored_conductor, align="center", mathmode=True, default=False),
         CheckCol("simple", "shimcurve.simple", "Simple", default=False),
         CheckCol("squarefree", "av.squarefree", "Squarefree", default=False),
-        CheckCol("contains_negative_one", "shimcurve.contains_negative_one", "Contains -1", short_title="contains -1", default=False),
+        CheckCol("is_coarse", "shimcurve.is_coarse", "Is coarse", short_title="is coarse", default=False),
         MultiProcessedCol("dims", "shimcurve.decomposition", "Decomposition", ["dims", "mults"], formatted_dims, align="center", apply_download=False, default=False),
         ProcessedCol("models", "shimcurve.models", "Models", blankzeros, default=False),
         MathCol("num_known_degree1_points", "shimcurve.known_points", "$j$-points", default=False),
         CheckCol("pointless", "shimcurve.local_obstruction", "Local obstruction", default=False),
         ProcessedCol("generators", "shimcurve.level_structure", r"$N_{B^{\times}}(O) \ltimes \operatorname{GL}_2(\mathbb{Z}/N\mathbb{Z})$-generators", lambda gens: ", ".join(r"$ \langle %s+%si+%sj+%sk, \begin{bmatrix}%s&%s\\%s&%s\end{bmatrix}$" % tuple(g) for g in gens) if gens else "trivial subgroup", short_title="generators", default=False),
     ],
-    db_cols=["label", "name", "level", "index", "discB", "discO", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "contains_negative_one", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
+    db_cols=["label", "name", "level", "index", "discB", "discO", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
 
 @search_parser
 def parse_family(inp, query, qfield):
@@ -384,7 +384,7 @@ class ShimCurve_download(Downloader):
         s += "// Elements that, together with Gamma(level), generate the group\n"
         s += "gens := %s;\n" % rec['generators']
         s += "// Group contains -1?\n"
-        if rec['contains_negative_one']:
+        if rec['is_coarse']:
             s += "ContainsMinus1 := true;\n"
         else:
             s += "ContainsMinus1 := false;\n"
@@ -602,7 +602,7 @@ def shimcurve_search(info, query):
     parse_bool_unknown(info, query, "has_obstruction")
     parse_bool(info, query, "simple")
     parse_bool(info, query, "squarefree")
-    parse_bool(info, query, "contains_negative_one")
+    parse_bool(info, query, "is_coarse")
     if "cm_discriminants" in info:
         if info["cm_discriminants"] == "yes":
             query["cm_discriminants"] = {"$ne": []}
@@ -775,10 +775,10 @@ class ShimCurveSearchArray(SearchArray):
             label="CM points",
             example="yes, no, CM discriminant -3"
         )
-        contains_negative_one = YesNoBox(
-            name="contains_negative_one",
-            knowl="shimcurve.contains_negative_one",
-            label="Contains $-I$",
+        is_coarse = YesNoBox(
+            name="is_coarse",
+            knowl="shimcurve.is_coarse",
+            label="Is coarse",
             example="yes",
             example_col=True,
             example_span="",
@@ -827,7 +827,7 @@ class ShimCurveSearchArray(SearchArray):
             [simple, squarefree],
             [cm_discriminants, factor],
             [covers, covered_by],
-            [contains_negative_one, family],
+            [is_coarse, family],
             [points, obstructions],
             [count],
         ]
@@ -836,7 +836,7 @@ class ShimCurveSearchArray(SearchArray):
             [level, index, genus, discB, discO, rank, genus_minus_rank],
             [gonality, nu2, nu3],
             [simple, squarefree, cm_discriminants, factor, covers],
-            [covered_by, contains_negative_one, points, obstructions, family],
+            [covered_by, is_coarse, points, obstructions, family],
         ]
 
     sorts = [
@@ -1024,15 +1024,17 @@ class ShimCurve_stats(StatsDisplay):
     @property
     def short_summary(self):
         shimcurve_knowl = display_knowl("shimcurve", title="Shimura curves")
+        pqm_knowl = display_knowl("shimcurve.pqm", title="potential quaternionic multiplication")
         return (
-            fr'The database currently contains {self.ncurves} {shimcurve_knowl} of level $N\le {self.max_level}$ parameterizing abelian surfaces $A$ over $\Q$ with potential quaternionic multiplication.  You can <a href="{url_for(".statistics")}">browse further statistics</a>.'
+            fr'The database currently contains {self.ncurves} {shimcurve_knowl} of level $N\le {self.max_level}$ parameterizing abelian surfaces $A$ over $\Q$ with {pqm_knowl}.  You can <a href="{url_for(".statistics")}">browse further statistics</a>.'
         )
 
     @property
     def summary(self):
         shimcurve_knowl = display_knowl("shimcurve", title="Shimura curves")
+        pqm_knowl = display_knowl("shimcurve.pqm", title="potential quaternionic multiplication")
         return (
-            fr'The database currently contains {self.ncurves} {shimcurve_knowl} of level $N\le {self.max_level}$ parameterizing abelian surfaces $A/\Q$ with potential quaternionic multiplication.'
+            fr'The database currently contains {self.ncurves} {shimcurve_knowl} of level $N\le {self.max_level}$ parameterizing abelian surfaces $A/\Q$ with {pqm_knowl}.'
         )
 
     table = db.gps_shimura_test
