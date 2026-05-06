@@ -291,7 +291,7 @@ shimcurve_columns = SearchColumns(
         ProcessedCol("conductor", "ag.conductor", "Conductor", factored_conductor, align="center", mathmode=True, default=False),
         CheckCol("simple", "shimcurve.simple", "Simple", default=False),
         CheckCol("squarefree", "av.squarefree", "Squarefree", default=False),
-        CheckCol("contains_negative_one", "shimcurve.contains_negative_one", "Contains -1", short_title="contains -1", default=False),
+        CheckCol("is_coarse", "shimcurve.is_coarse", "Is coarse", short_title="is coarse", default=False),
         MultiProcessedCol("dims", "shimcurve.decomposition", "Decomposition", ["dims", "mults"], formatted_dims, align="center", apply_download=False, default=False),
         ProcessedCol("models", "shimcurve.models", "Models", blankzeros, default=False),
         MathCol("num_known_degree1_points", "shimcurve.known_points", "$j$-points", default=False),
@@ -775,10 +775,10 @@ class ShimCurveSearchArray(SearchArray):
             label="CM points",
             example="yes, no, CM discriminant -3"
         )
-        contains_negative_one = YesNoBox(
+        is_coarse = YesNoBox(
             name="is_coarse",
-            knowl="shimcurve.contains_negative_one",
-            label="Contains $-I$",
+            knowl="shimcurve.is_coarse",
+            label="Is coarse",
             example="yes",
             example_col=True,
             example_span="",
@@ -827,7 +827,7 @@ class ShimCurveSearchArray(SearchArray):
             [simple, squarefree],
             [cm_discriminants, factor],
             [covers, covered_by],
-            [contains_negative_one, family],
+            [is_coarse, family],
             [points, obstructions],
             [count],
         ]
@@ -836,7 +836,7 @@ class ShimCurveSearchArray(SearchArray):
             [level, index, genus, discB, discO, rank, genus_minus_rank],
             [gonality, nu2, nu3],
             [simple, squarefree, cm_discriminants, factor, covers],
-            [covered_by, contains_negative_one, points, obstructions, family],
+            [covered_by, is_coarse, points, obstructions, family],
         ]
 
     sorts = [
