@@ -657,6 +657,7 @@ class WebShimCurve(WebObj):
         return ell_str    
     
     def show_genus(self):
+        # Showing the genus formula from Gauss-Bonnet, see (39.4.2) in [JV]
         genus_str = r"$ %s " % str(self.genus)
         if self.nu2 is not None:
             order = db.quaternion_orders.lookup(self.order_label, ['area_numerator', 'area_denominator'])
