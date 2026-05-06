@@ -86,6 +86,8 @@ def index_Q():
     if request.args:
         return shimcurve_search(info)
     title = r"Shimura curves over $\Q$"
+    info["discb_list"] = ["6-50", "50-100", "100-150", "150-200", "200-"]
+    info["disco_list"] = ["6-50", "50-100", "100-150", "150-200", "200-"]
     info["level_list"] = ["1-4", "5-8", "9-12", "13-16", "17-23", "24-"]
     info["genus_list"] = ["0", "1", "2", "3", "4-6", "7-20", "21-100", "101-"]
     info["rank_list"] = ["0", "1", "2", "3", "4-6", "7-20", "21-100", "101-"]
@@ -853,8 +855,9 @@ class ShimCurveSearchArray(SearchArray):
             [gonality, simple],
             [squarefree, cm_discriminants],
             [covers, covered_by],
-            [is_coarse, family],
-            [points, obstructions],
+            #[is_coarse, family],
+            [family],
+            #[points, obstructions],
             [count],
         ]
 
