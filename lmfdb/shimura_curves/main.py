@@ -290,7 +290,7 @@ shimcurve_columns = SearchColumns(
         MathCol("genus", "shimcurve.genus", "Genus"),
         ProcessedCol("rank", "shimcurve.rank", "Rank", lambda r: "" if r is None else r, default=lambda info: info.get("rank") or info.get("genus_minus_rank"), align="center", mathmode=True),
         ProcessedCol("q_gonality_bounds", "shimcurve.gonality", r"$\Q$-gonality", lambda b: r'$%s$'%(b[0]) if b[0] == b[1] else r'$%s \le \gamma \le %s$'%(b[0],b[1]), align="center", short_title="Q-gonality"),
-        CheckCol("cm_discriminants", "shimcurve.cm_discriminants", "CM points", align="center"),
+        #CheckCol("cm_discriminants", "shimcurve.cm_discriminants", "CM points", align="center"),
         ProcessedCol("conductor", "ag.conductor", "Conductor", factored_conductor, align="center", mathmode=True, default=False),
         CheckCol("simple", "shimcurve.simple", "Simple", default=False),
         CheckCol("squarefree", "av.squarefree", "Squarefree", default=False),
@@ -301,7 +301,8 @@ shimcurve_columns = SearchColumns(
         CheckCol("pointless", "shimcurve.local_obstruction", "Local obstruction", default=False),
         ProcessedCol("generators", "shimcurve.level_structure", r"$N_{B^{\times}}(O) \ltimes \operatorname{GL}_2(\mathbb{Z}/N\mathbb{Z})$-generators", lambda gens: ", ".join(r"$ \langle %s+%si+%sj+%sk, \begin{bmatrix}%s&%s\\%s&%s\end{bmatrix}$" % tuple(g) for g in gens) if gens else "trivial subgroup", short_title="generators", default=False),
     ],
-    db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
+    #db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
+    db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
 
 @search_parser
 def parse_family(inp, query, qfield):
@@ -601,27 +602,27 @@ def shimcurve_search(info, query):
     parse_ints(info, query, "nu6")
     if not info.get("points_type"): # default, which is non-cuspidal
         parse_ints(info, query, "points", qfield="num_known_degree1_noncusp_points")
-    elif info["points_type"] == "noncm":
-        parse_ints(info, query, "points", qfield="num_known_degree1_noncm_points")
+    #elif info["points_type"] == "noncm":
+    #    parse_ints(info, query, "points", qfield="num_known_degree1_noncm_points")
     elif info["points_type"] == "all":
         parse_ints(info, query, "points", qfield="num_known_degree1_points")
     parse_bool_unknown(info, query, "has_obstruction")
     parse_bool(info, query, "simple")
     parse_bool(info, query, "squarefree")
     parse_bool(info, query, "is_coarse")
-    if "cm_discriminants" in info:
-        if info["cm_discriminants"] == "yes":
-            query["cm_discriminants"] = {"$ne": []}
-        elif info["cm_discriminants"] == "no":
-            query["cm_discriminants"] = []
-        elif info["cm_discriminants"] == "-3,-12,-27":
-            query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-3,-12,-27]]}
-        elif info["cm_discriminants"] == "-4,-16":
-            query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-4,-16]]}
-        elif info["cm_discriminants"] == "-7,-28":
-            query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-7,-28]]}
-        else:
-            query["cm_discriminants"] = {"$contains": int(info["cm_discriminants"])}
+    #if "cm_discriminants" in info:
+    #    if info["cm_discriminants"] == "yes":
+    #        query["cm_discriminants"] = {"$ne": []}
+    #    elif info["cm_discriminants"] == "no":
+    #        query["cm_discriminants"] = []
+    #    elif info["cm_discriminants"] == "-3,-12,-27":
+    #        query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-3,-12,-27]]}
+    #    elif info["cm_discriminants"] == "-4,-16":
+    #        query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-4,-16]]}
+    #    elif info["cm_discriminants"] == "-7,-28":
+    #        query["cm_discriminants"] = {"$or": [{"$contains": int(D)} for D in [-7,-28]]}
+    #    else:
+    #        query["cm_discriminants"] = {"$contains": int(info["cm_discriminants"])}
     parse_element_of(info, query, "covers", qfield="parents", parse_singleton=str)
     parse_element_of(info, query, "factor", qfield="factorization", parse_singleton=str)
     if "covered_by" in info:
@@ -792,16 +793,16 @@ class ShimCurveSearchArray(SearchArray):
             label="Squarefree",
             example_col=True,
         )
-        cm_opts = ([('', ''), ('yes', 'rational CM points'), ('no', 'no rational CM points')]
-                   + [('-4,-16', 'CM field Q(sqrt(-1))'), ('-3,-12,-27', 'CM field Q(sqrt(-3))'), ('-7,-28', 'CM field Q(sqrt(-7))')]
-                   + [('-%d'%d, 'CM discriminant -%d'%d) for d in [3,4,7,8,11,12,16,19,27,38,43,67,163]])
-        cm_discriminants = SelectBox(
-            name="cm_discriminants",
-            options=cm_opts,
-            knowl="shimcurve.cm_discriminants",
-            label="CM points",
-            example="yes, no, CM discriminant -3"
-        )
+        #cm_opts = ([('', ''), ('yes', 'rational CM points'), ('no', 'no rational CM points')]
+        #           + [('-4,-16', 'CM field Q(sqrt(-1))'), ('-3,-12,-27', 'CM field Q(sqrt(-3))'), ('-7,-28', 'CM field Q(sqrt(-7))')]
+        #           + [('-%d'%d, 'CM discriminant -%d'%d) for d in [3,4,7,8,11,12,16,19,27,38,43,67,163]])
+        #cm_discriminants = SelectBox(
+        #    name="cm_discriminants",
+        #    options=cm_opts,
+        #    knowl="shimcurve.cm_discriminants",
+        #    label="CM points",
+        #    example="yes, no, CM discriminant -3"
+        #)
         is_coarse = YesNoBox(
             name="is_coarse",
             knowl="shimcurve.is_coarse",
@@ -812,7 +813,7 @@ class ShimCurveSearchArray(SearchArray):
         )
         points_type = SelectBox(
             name="points_type",
-            options=[('noncm', 'non-CM'),
+            options=[#('noncm', 'non-CM'),
                      ('all', 'all'),
                      ],
             min_width=105)
@@ -853,10 +854,11 @@ class ShimCurveSearchArray(SearchArray):
             [nu2, nu3],
             [nu4, nu6],
             [gonality, simple],
-            [squarefree, cm_discriminants],
+            #[squarefree, cm_discriminants],
             [covers, covered_by],
             #[is_coarse, family],
-            [family],
+            #[family],
+            [squarefree, family],
             #[points, obstructions],
             [count],
         ]
@@ -866,8 +868,9 @@ class ShimCurveSearchArray(SearchArray):
             [genus, rank, genus_minus_rank, gonality],
             [nu2, nu3, nu4, nu6],
             #[simple, squarefree, cm_discriminants, factor, covers],
-            [simple, squarefree, cm_discriminants, covers],
-            [covered_by, is_coarse, points, obstructions, family],
+            #[simple, squarefree, cm_discriminants, covers],
+            [simple, squarefree, covers, covered_by],
+            [is_coarse, points, obstructions, family],
         ]
 
     sorts = [
