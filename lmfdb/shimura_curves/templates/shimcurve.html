@@ -41,6 +41,12 @@
 <h2> {{ KNOWL('ag.jacobian', 'Jacobian') }} </h2>
 
 <table>
+  {% if curve.conductor is not none %}
+  <tr>
+    <td>{{ KNOWL('ag.conductor', 'Conductor') }}:</td>
+    <td>${{ curve.factored_conductor }}$</td>
+  </tr>
+  {% endif %}
   <tr>
     <td>
       {{ KNOWL('av.simple', 'Simple') }}:
@@ -69,6 +75,16 @@
       {% endif %}
     </td>
   </tr>
+  <tr>
+    <td>{{ KNOWL('shimcurve.decomposition', 'Decomposition') }}:</td>
+    <td>{{ curve.formatted_dims }}</td>
+  </tr>
+  {% if curve.newforms %}
+  <tr>
+    <td>{{ KNOWL('shimcurve.decomposition', 'Newforms') }}:</td>
+    <td>{{ curve.formatted_newforms | safe }}</td>
+  </tr>
+  {% endif %}
 </table>
 {% endif %}
 
