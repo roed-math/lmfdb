@@ -657,11 +657,13 @@ class WebShimCurve(WebObj):
         return ell_str    
     
     def show_genus(self):
+        # Showing the genus formula from Gauss-Bonnet, see (39.4.2) in [JV]
         genus_str = r"$ %s " % str(self.genus)
         if self.nu2 is not None:
             order = db.quaternion_orders.lookup(self.order_label, ['area_numerator', 'area_denominator'])
             area = order['area_numerator'] / QQ(order['area_denominator']);
             area /= db.quaternion_orders_polarized.lookup(self.mu_label, 'AutmuO_size');
+            area *= self.aut_gerbiness
             index = self.fuchsian_index
             if index == 1:
                 genus_str += r" = 1 + \frac{%s}{%s}" % (area.numerator(), area.denominator())
