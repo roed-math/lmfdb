@@ -55,8 +55,8 @@ from lmfdb.shimura_curves.web_curve import (
 )
 from lmfdb.modular_curves.main import CP_LABEL_GENUS_RE
 
-coarse_label_re = r"\d+\.\d+\.\d+\.\d+\.\d+\.[a-z]+\.\d+"
-fine_label_re = r"\d+\.\d+\.\d+\.\d+\.\d+-\d+\.\d+\.[a-z]+\.\d+\.\d+"
+coarse_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+\.[a-z]+\.\d+"
+fine_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+-\d+\.\d+\.[a-z]+\.\d+\.\d+"
 LABEL_RE = re.compile(f"({coarse_label_re})|({fine_label_re})")
 FINE_LABEL_RE = re.compile(fine_label_re)
 NAME_RE = re.compile(r"X\(\d+(;|,)\d+\)")
@@ -306,19 +306,21 @@ shimcurve_columns = SearchColumns(
 
 @search_parser
 def parse_family(inp, query, qfield):
-    if inp not in ["XD", "XDN", "XDstar", "XDNstar", "any"]:
+    if inp not in ["XD", "XDN", "XDstar", "XDNstar", "XDM1", "any"]:
         raise ValueError
     if inp == "any":
         query[qfield] = {"$like": "X%"}
-    elif inp == "XD": #add nothing
-        query[qfield] = {"$like": "X" + "(%;1)"}
+    elif inp == "XD":
+        query[qfield] = {"$like": "X(%;1)", "$not": {"$like": "%,%"}}
     elif inp == "XDN":
         query[qfield] = {"$or":[{"$like": "X(%;%)", "$not": {"$like": "%,%"}}, {"$in":["X(6;1)", "X(6;2)"]}]}
     elif inp == "XDstar":
         query[qfield] = {"$like": "X^*" + "(%;1)"}
     elif inp == "XDNstar":
         query[qfield] = {"$like": "X^*" + "(%;%)"}
-    else: #add X(6;1),X(6;2)
+    elif inp == "XDM1":
+        query[qfield] = {"$like": "X(%;1)"}
+    else:
         query[qfield] = {"$or":[{"$like": inp + "(%"}, {"$in":["X(6;1)","X(6;2)"]}]}
 
 # cols currently unused in individual page download
@@ -839,6 +841,7 @@ class ShimCurveSearchArray(SearchArray):
                      ("XDN", "X(D;N)"),
                      ("XDstar", "X^*(D;1)"),
                      ("XDNstar", "X^*(D;N)"),
+                     ("XDM1", "X(D,M;1)"),
                      ("any", "any")],
             knowl="shimcurve.standard",
             label="Family",
@@ -875,6 +878,8 @@ class ShimCurveSearchArray(SearchArray):
 
     sorts = [
         ("", "level", ["level", "deg_mu", "index", "genus", "label"]),
+        ("discB", "discB", ["discB", "discO", "deg_mu", "level", "index", "genus", "label"]),
+        ("discO", "discO", ["discO", "discB", "deg_mu", "level", "index", "genus", "label"]),
         ("index", "index", ["index", "level", "deg_mu", "genus", "label"]),
         ("genus", "genus", ["genus", "level", "deg_mu", "index", "label"]),
         ("rank", "rank", ["rank", "genus", "level", "deg_mu", "index", "label"]),
@@ -1034,6 +1039,7 @@ class RatPointSearchArray(SearchArray):
                      ("XDN", "X(D;N)"),
                      ("XDstar", "X^*(D;1)"),
                      ("XDNstar", "X^*(D;N)"),
+                     ("XDM1", "X(D,M;1)"),
                      ("any", "any")],
             knowl="shimcurve.standard",
             label="Family",
