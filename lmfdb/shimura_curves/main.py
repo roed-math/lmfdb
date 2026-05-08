@@ -877,10 +877,10 @@ class ShimCurveSearchArray(SearchArray):
         ]
 
     sorts = [
-        ("", "level", ["level", "deg_mu", "index", "genus", "label"]),
+        ("", "level", ["level", "discB", "discO", "deg_mu", "index", "genus", "label"]),
         ("discB", "discB", ["discB", "discO", "deg_mu", "level", "index", "genus", "label"]),
         ("discO", "discO", ["discO", "discB", "deg_mu", "level", "index", "genus", "label"]),
-        ("index", "index", ["index", "level", "deg_mu", "genus", "label"]),
+        ("index", "index", ["index", "discB", "discO", "level", "deg_mu", "genus", "label"]),
         ("genus", "genus", ["genus", "level", "deg_mu", "index", "label"]),
         ("rank", "rank", ["rank", "genus", "level", "deg_mu", "index", "label"]),
     ]
