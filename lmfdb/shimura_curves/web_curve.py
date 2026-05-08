@@ -608,6 +608,8 @@ class WebShimCurve(WebObj):
     def show_generators(self):
         if not self.generators: # 2.6.0.a.1
             return "trivial subgroup"
+        if self.level == 1:
+            return ", ".join(r"$" + WebShimCurve.show_quaternion(g[:4]) + r"$" for g in self.generators)
         return ", ".join(r"$\left \langle " + WebShimCurve.show_quaternion(g[:4]) + "," + self.show_order_elt(g[4:]) + r" \right \rangle$" for g in self.generators)
 
     def show_quat_alg(self):
