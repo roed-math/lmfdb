@@ -59,7 +59,7 @@ coarse_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+\.[a-z]+\.\d+"
 fine_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+-\d+\.\d+\.[a-z]+\.\d+\.\d+"
 LABEL_RE = re.compile(f"({coarse_label_re})|({fine_label_re})")
 FINE_LABEL_RE = re.compile(fine_label_re)
-NAME_RE = re.compile(r"X\(\d+(;|,)\d+\)")
+NAME_RE = re.compile(r"X\*?\(\d+(,\d+)?(;|,)\d+\)")
 
 def learnmore_list():
     return [('Source and acknowledgments', url_for(".how_computed_page")),

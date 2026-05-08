@@ -97,7 +97,16 @@ def showj_nf(j, jfield, jorig, resfield):
 
 def canonicalize_name(name):
     cname = name
-    cname = name.replace(",", ";")
+    if ";" not in cname:
+        # X(D,M) with no semicolon: X(D,1) → X(D;1), X(D,M) → X(D,M;1)
+        paren = cname.index("(") if "(" in cname else -1
+        if paren != -1 and cname.endswith(")") and "," in cname[paren:]:
+            inner = cname[paren+1:-1]
+            parts = inner.split(",")
+            if len(parts) == 2 and parts[1] == "1":
+                cname = cname[:paren+1] + parts[0] + ";1)"
+            else:
+                cname = cname[:-1] + ";1)"
     if cname[:2] == "X*":
         cname = "X^*" + cname[2:]
     return cname

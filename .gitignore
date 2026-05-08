@@ -34,3 +34,5 @@ LMFDBinventory.log
 LMFDBtransactions_inv.log
 
 scripts/groups/Make-images/images/*.png
+
+gps_shimura_test.txt
