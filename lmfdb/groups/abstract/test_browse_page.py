@@ -74,6 +74,11 @@ class AbGpsHomeTest(LmfdbTest):
         self.check_args("/Groups/Abstract/?jump=10.1", "10.1") # by label
         self.check_args("/Groups/Abstract/?jump=SL(2,7)", "336.114") # by family name
         self.check_args("/Groups/Abstract/?jump=F5", "20.3") # by name
+        # families stored under an alias name (issue #6654)
+        self.check_args("/Groups/Abstract/?jump=Sp(2, 5)", "120.5") # Sp(2,q) = SL(2,q)
+        self.check_args("/Groups/Abstract/?jump=PSp(2,5)", "60.5") # PSp(2,q) = PSL(2,q)
+        self.check_args("/Groups/Abstract/?jump=GSp(2,7)", "2016.a") # GSp(2,q) = GL(2,q)
+        self.check_args("/Groups/Abstract/?jump=Spin(3,5)", "120.5") # Spin(3,q) = SL(2,q)
 
     # test that abelian group redirect works
     def test_abelian_lookup(self):

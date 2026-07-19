@@ -1204,6 +1204,20 @@ def show_type(ab, nil, solv, smith, nilcls, dlen, clen):
         return f'Non-Solvable - {clen}'
 
 CYCLIC_PRODUCT_RE = re.compile(r"[Cc][0-9]+(\^[0-9]+)?(\s*[*Xx]\s*[Cc][0-9]+(\^[0-9]+)?)*")
+
+# Low-dimensional members of some families coincide with members of another
+# family and are only stored in gps_special_names under the other name;
+# this dictionary maps (family, n) to the stored (family, n).  See #6654.
+FAMILY_ALIASES = {
+    ("Sp", 2): ("SL", 2),             # Sp(2,q) = SL(2,q)
+    ("PSp", 2): ("PSL", 2),           # PSp(2,q) = PSL(2,q)
+    ("GSp", 2): ("GL", 2),            # GSp(2,q) = GL(2,q)
+    ("ASp", 2): ("ASL", 2),           # ASp(2,q) = ASL(2,q)
+    ("PSigmaSp", 2): ("PSigmaL", 2),  # PSigmaSp(2,q) = PSigmaL(2,q)
+    ("ASigmaSp", 2): ("ASigmaL", 2),  # ASigmaSp(2,q) = ASigmaL(2,q)
+    ("Spin", 3): ("SL", 2),           # Spin(3,q) = SL(2,q)
+}
+
 #### Searching
 def group_jump(info):
     jump = info["jump"]
@@ -1260,9 +1274,9 @@ def group_jump(info):
             return n.is_prime_power()
         elif fam == "He":
             return n > 2 and n.is_prime()
-        elif fam in ["Sp", "PSp", "SOPlus", "SOMinus", "GOPlus", "GOMinus", "OmegaPlus", "OmegaMinus", "PSOPlus", "PSOMinus", "PGOPlus", "PGOMinus", "POmegaPlus", "POmegaMinus", "SpinPlus", "SpinMinus", "CSp", "CSOPlus", "CSOMinus", "COPlus", "COMinus", "PSigmaSp", "ASigmaSp"]:
+        elif fam in ["Sp", "PSp", "ASp", "GSp", "SOPlus", "SOMinus", "OrthPlus", "OrthMinus", "OmegaPlus", "OmegaMinus", "PSOPlus", "PSOMinus", "POPlus", "POMinus", "POmegaPlus", "POmegaMinus", "SpinPlus", "SpinMinus", "GSOPlus", "GSOMinus", "GOrthPlus", "GOrthMinus", "PSigmaSp", "ASigmaSp"]:
             return n % 2 == 0
-        elif fam in ["SO", "PSO", "GO", "Omega", "PGO", "POmega", "Spin", "CSO", "CO"]:
+        elif fam in ["SO", "PSO", "Orth", "Omega", "PO", "POmega", "Spin", "GSO", "GOrth"]:
             return n % 2 == 1
         elif fam == "CoxH":
             return n in [3,4]
@@ -1290,7 +1304,11 @@ def group_jump(info):
         m = re.fullmatch(family["input"], jump)
         if m:
             m_dict = dict([a, int_try(x)] for a, x in m.groupdict().items()) # convert string to int
-            lab = db.gps_special_names.lucky({"family":family["family"], "parameters":m_dict}, projection="label")
+            fam, params = family["family"], m_dict
+            if (fam, params.get("n")) in FAMILY_ALIASES:
+                fam, n = FAMILY_ALIASES[fam, params.get("n")]
+                params = dict(params, n=n)
+            lab = db.gps_special_names.lucky({"family":fam, "parameters":params}, projection="label")
             if lab:
                 return redirect(url_for(".by_label", label=lab))
             elif valid_params(family["family"], m_dict):
