@@ -77,6 +77,31 @@ class EllCurveTest(LmfdbTest):
         L = self.tc.get('EllipticCurve/2.2.89.1/81.1/a/1/download/gp')
         assert 'Pari/GP code for working with elliptic curve 2.2.89.1-81.1-a1' in L.get_data(as_text=True)
 
+    def test_search_download(self):
+        r"""
+        Check downloading search results (issue #7004)
+        """
+        # The base field 3.3.1849.1 is not monogenic, so these curves have
+        # Weierstrass coefficients with non-integral rational coordinates
+        base = '/EllipticCurve/?download=1&query=%7B%27field_label%27%3A+%273.3.1849.1%27%2C+%27conductor_norm%27%3A+1%7D&Submit='
+        for lang in ['sage', 'gp', 'magma', 'text', 'csv']:
+            L = self.tc.get(base + lang)
+            data = L.get_data(as_text=True)
+            assert '[-25097, -6233/2, 3859/2]' in data
+            assert 'unable to convert' not in data
+        # In Julia, -3/2 is floating point division, so rationals must be downloaded as -3//2
+        L = self.tc.get(base + 'oscar')
+        data = L.get_data(as_text=True)
+        assert '[-25097, -6233//2, 3859//2]' in data
+        # For curves whose rank is not known, the rank bounds should be
+        # downloaded rather than a LaTeX string such as "0 \le r \le 1"
+        base = '/EllipticCurve/?download=1&query=%7B%27field_label%27%3A+%272.0.868.1%27%2C+%27conductor_norm%27%3A+2%7D&Submit='
+        for lang in ['sage', 'oscar']:
+            L = self.tc.get(base + lang)
+            data = L.get_data(as_text=True)
+            assert '["2.1-b1", "2.1-b", "2.0.868.1", [217, 0, 1], 2, [0, 1], []' in data
+            assert '"0 \\\\le r \\\\le 1"' not in data
+
     def test_search(self):
         r"""
         Check ecnf search results
