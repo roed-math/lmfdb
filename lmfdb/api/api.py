@@ -157,6 +157,25 @@ def stats():
     return render_template('api-stats.html', info=info)
 
 
+def parse_numeric(x, typ):
+    """
+    Parse a value for one of the numeric type-prefixes, allowing the
+    inclusive range syntax ``a..b``; either endpoint may be omitted,
+    as in ``a..`` or ``..b``.
+    """
+    if ".." in x:
+        lower, upper = x.split("..", 1)
+        rng = {}
+        if lower:
+            rng["$gte"] = typ(lower)
+        if upper:
+            rng["$lte"] = typ(upper)
+        if not rng:
+            raise ValueError("range must have at least one endpoint")
+        return rng
+    return typ(x)
+
+
 @api_page.route("/<table>/<id>")
 def api_query_id(table, id):
     if id == 'schema':
@@ -237,12 +256,14 @@ def api_query(table, id=None):
             try:
                 if qkey.startswith("_"):
                     continue
+                elif qval == "None":     # match entries where qkey is null (use sNone for the string "None")
+                    qval = None
                 elif qval.startswith("s"):
                     qval = qval[1:]
                 elif qval.startswith("i"):
-                    qval = int(qval[1:])
+                    qval = parse_numeric(qval[1:], int)
                 elif qval.startswith("f"):
-                    qval = float(qval[1:])
+                    qval = parse_numeric(qval[1:], float)
                 elif qval.startswith("ls"):      # indicator, that it might be a list of strings
                     qval = qval[2].split(DELIM)
                 elif qval.startswith("li"):
@@ -256,7 +277,7 @@ def api_query(table, id=None):
                 elif qval.startswith("ci"):
                     qval = { "$contains": [int(qval[2:])] }
                 elif qval.startswith("cf"):
-                    qval = { "contains": [float(qval[2:])] }
+                    qval = { "$contains": [float(qval[2:])] }
                 elif qval.startswith("cpy"):
                     qval = { "$contains": [literal_eval(qval[3:])] }
             except Exception:
