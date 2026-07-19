@@ -1615,9 +1615,18 @@ def input_to_subfield(inp):
 
 @search_parser  # see SearchParser.__call__ for actual arguments when calling
 def parse_subfield(inp, query, qfield):
-    sf = input_to_subfield(inp)
-    if sf:  # Might return none
-        query[qfield] = {"$contains": sf}
+    if "," in inp:
+        # A comma-separated list of subfields means AND of the containment
+        # conditions, i.e. fields containing every listed subfield (equivalently,
+        # their compositum).  input_to_subfield may return None for empty pieces
+        # (e.g. a trailing comma), which we drop.
+        sfs = [sf for sf in (input_to_subfield(f) for f in inp.split(",")) if sf]
+        if sfs:
+            query[qfield] = {"$contains": sfs}
+    else:
+        sf = input_to_subfield(inp)
+        if sf:  # Might return none
+            query[qfield] = {"$contains": sf}
 
 @search_parser  # see SearchParser.__call__ for actual arguments when calling
 def parse_nf_string(inp, query, qfield):
