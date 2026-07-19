@@ -3,9 +3,11 @@ import os
 import yaml
 
 from flask import url_for
+from cypari2 import PariError
 from sage.all import (
     Set, ZZ, RR, pi, gcd, euler_phi, CyclotomicField, gap, RealField, sqrt, prod,
-    QQ, NumberField, QuadraticField, PolynomialRing, latex, pari, cached_function, Permutation)
+    QQ, NumberField, QuadraticField, PolynomialRing, latex, pari, cached_function,
+    Permutation, prime_range)
 
 from lmfdb import db
 from lmfdb.utils import (web_latex, coeff_to_poly,
@@ -510,6 +512,125 @@ def get_local_field(lab):
     return LF
 
 
+@cached_function
+def max_nf_degree():
+    return db.nf_fields.max('degree')
+
+
+# Minimal degree for which we attempt the abelian lookup below; for
+# smaller degrees polredabs is cheap anyway
+ABELIAN_LOOKUP_MIN_DEGREE = 8
+
+
+@cached_function
+def _prime_product(bound):
+    # The product of all primes up to bound, used to extract the small
+    # prime factors of a discriminant with a single gcd (much faster
+    # than trial division when the discriminant is huge)
+    return prod(prime_range(bound))
+
+
+def _probably_galois(T, needed=6, maxp=1000):
+    """
+    Cheap necessary condition for the irreducible pari polynomial ``T`` to
+    define a Galois number field: modulo any prime not dividing its
+    discriminant, all irreducible factors have the same degree.  Returns
+    False only if ``T`` is provably not Galois (hence not abelian); True
+    means "maybe Galois".
+    """
+    count = 0
+    lead = ZZ(T.pollead())
+    for p in prime_range(maxp):
+        if lead % p == 0:
+            continue
+        fm = T.factormod(p)
+        if any(int(e) > 1 for e in fm[1]):
+            # p divides the discriminant of T
+            continue
+        if len({int(f.poldegree()) for f in fm[0]}) > 1:
+            return False
+        count += 1
+        if count >= needed:
+            break
+    return True
+
+
+def abelian_nf_label(T):
+    """
+    Attempt to find the label of the number field K defined by ``T`` (an
+    integral irreducible pari polynomial in x, typically the output of
+    polredbest) without running polredabs, using the strategy suggested by
+    jwj61 for abelian fields (see issue #5471):
+
+    - certify that K is abelian, using galoisinit on an order that is
+      maximal at the "known" primes of disc(T); no attempt is ever made to
+      fully factor the discriminant, which can be infeasible;
+    - read off the field discriminant from the valuations of the
+      discriminant of that order at the known primes (correct as soon as
+      they include all ramified primes; if not, the database query below
+      simply comes back empty);
+    - query nf_fields by degree, signature and discriminant, and confirm
+      each candidate with nfroots, by exhibiting a root of its defining
+      polynomial in K.
+
+    Returns the label, or None (not applicable / not certified abelian /
+    no confirmed match), in which case the caller should fall back to the
+    polredabs path.  A non-None answer is always correct: the root of the
+    candidate's defining polynomial giving the isomorphism is verified by
+    an exact polynomial computation.
+    """
+    n = int(T.poldegree())
+    if n < ABELIAN_LOOKUP_MIN_DEGREE:
+        return None
+    try:
+        if not _probably_galois(T):
+            return None
+        D = ZZ(T.poldisc())
+        if D == 0:
+            return None
+        # Primes up to 10^5 dividing D
+        S = D.gcd(_prime_product(10**5)).prime_divisors()
+        # If the remaining unfactored part of D is a pseudoprime of
+        # reasonable size, use it too: this catches fields ramified at one
+        # larger prime.  If it is a hard composite we leave it alone.
+        C = D.abs()
+        for p in S:
+            C //= p**C.valuation(p)
+        if C > 1 and C.ndigits() <= 300 and C.is_pseudoprime():
+            S.append(C)
+        # Order maximal (at least) at the primes in S; written in the
+        # variable y so that we can factor polynomials in x over K below
+        nf = pari.nfinit([T.subst("x", "y"), S])
+        gal = pari.galoisinit(nf)
+        if gal == 0 or pari.galoisisabelian(gal) == 0:
+            # not certified Galois, or certified non-abelian
+            return None
+        # The order is p-maximal for every p in S, so the valuations of its
+        # discriminant at those primes are those of disc(K); primes outside
+        # S are ignored (they are index primes, unless one of them ramifies,
+        # in which case DK is wrong at it and the query just finds no match)
+        d_ord = ZZ(nf.disc())
+        DK = prod(p**d_ord.valuation(p) for p in S)
+        r1 = int(T.polsturm())
+    except PariError:
+        return None
+    r2 = (n - r1) // 2
+    query = {'degree': n, 'r2': r2, 'disc_abs': int(DK),
+             'disc_sign': 1 if r2 % 2 == 0 else -1}
+    for cand in db.nf_fields.search(query, ['label', 'coeffs']):
+        gpol = pari(coeff_to_poly(cand['coeffs']))
+        try:
+            for rt in pari.nfroots(nf, gpol):
+                if gpol.subst("x", rt) == 0:
+                    # certified: K contains a root of gpol, which is
+                    # irreducible of the same degree n, so K is isomorphic
+                    # to the field of this candidate
+                    return cand['label']
+        except PariError:
+            continue
+    return None
+
+
 class WebNumberField:
     """
      Class for retrieving number field information from the database
@@ -563,8 +684,18 @@ class WebNumberField:
         # For some reason the error raised by Pari on a constant polynomial is not being caught
         if pol.degree() < 1:
             raise ValueError("Polynomial cannot be constant")
+        if pol.degree() > max_nf_degree():
+            # there is no field of this degree in the database, so we can
+            # skip the (potentially very expensive) canonicalization below
+            return cls('a')  # will initialize data to None
         R = pol.parent()
-        pol = R(pari(pol).polredbest().polredabs())
+        pol = pari(pol).polredbest()
+        # For abelian fields we may be able to identify the field without
+        # running polredabs, which can be very expensive (issue #5471)
+        label = abelian_nf_label(pol)
+        if label is not None:
+            return cls(label)
+        pol = R(pol.polredabs())
         return cls.from_coeffs([int(c) for c in pol.coefficients(sparse=False)])
 
     # If we already have the database entry
