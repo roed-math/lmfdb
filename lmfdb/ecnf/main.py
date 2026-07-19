@@ -3,6 +3,7 @@
 
 import ast
 import re
+from functools import lru_cache
 from urllib.parse import quote, unquote
 
 from flask import render_template, request, url_for, redirect, make_response, abort
@@ -400,7 +401,9 @@ ecnf_columns = SearchColumns([
                  default=lambda info: info.get("bad_primes"), mathmode=True, align="center"),
     MultiProcessedCol("rank", "ec.rank", "Rank", ["rank", "rank_bounds"],
                       lambda rank, rank_bounds: rank if rank is not None else (r"%s \le r \le %s" % (rank_bounds[0],rank_bounds[1]) if rank_bounds is not None else ""),
-                      mathmode=True, align="center"),
+                      mathmode=True, align="center",
+                      # When the rank is not known, download the bounds on the rank instead (None if those are unknown too)
+                      apply_download=lambda rank, rank_bounds: rank if rank is not None else rank_bounds),
     ProcessedCol("torsion_structure", "ec.torsion_subgroup", "Torsion",
                  lambda tors: r"\oplus".join(r"\Z/%s\Z" % n for n in tors) if tors else r"\mathsf{trivial}", mathmode=True, align="center"),
     ProcessedCol("has_cm", "ec.complex_multiplication", "CM", lambda v: r"$\textsf{%s}$" % ("no" if v == 0 else ("potential" if v < 0 else "yes")),
@@ -446,11 +449,17 @@ class ECNFDownloader(Downloader):
     title = "Elliptic curves over number fields"
     short_name = "curves"
 
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def field_poly(field_label):
+        # Look up the defining polynomial of a base field; cached since download
+        # results are sorted by field, so the same field shows up in consecutive rows
+        from lmfdb.utils import coeff_to_poly
+        return coeff_to_poly(db.nf_fields.lookup(field_label, projection='coeffs'))
+
     def postprocess(self, row, info, query):
         # Look up the defining polynomial coefficients for the base field of the curve
-        from lmfdb.utils import coeff_to_poly
-        poly = coeff_to_poly(db.nf_fields.lookup(row['field_label'], projection='coeffs'))
-        row["field_coeffs"] = poly
+        row["field_coeffs"] = self.field_poly(row['field_label'])
 
         # Convert Weierstrass coefficients from string to a list of list of rationals
         row['ainvs'] = [[QQ(aj) for aj in ai.split(",")] for ai in row['ainvs'].split(";")]
