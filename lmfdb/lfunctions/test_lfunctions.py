@@ -82,6 +82,56 @@ class LfunctionTest(LmfdbTest):
         # factored form, as for L.localfactors_factored_dict
         assert Lfactor_to_gq([[[1, 2, 2], 1]], 2) == (1, 2)
 
+    def test_Lfactor_to_gq_weil_condition(self):
+        # Self-duality alone is not the Weil condition: the reversal must have
+        # all complex roots of absolute value sqrt(q).
+        from lmfdb.lfunctions.Lfunctionutilities import (
+            Lfactor_to_gq, Lfactor_to_label_and_link_if_exists)
+        # x^2 + 10x + 2 is self-dual with q = 2 but has real roots, violating
+        # the Hasse bound |a_2| <= 2 sqrt(2): no elliptic curve over F_2
+        assert Lfactor_to_gq([1, 10, 2], 2) is None
+        assert Lfactor_to_gq([1, 10, 2]) is None
+        # (1 + T)(1 + 2T): self-dual with q = 2, inverse roots 1 and 2
+        assert Lfactor_to_gq([1, 3, 2], 2) is None
+        # a_5 = 5 > 2 sqrt(5), while a_5 = 4 is fine
+        assert Lfactor_to_gq([1, -5, 5], 5) is None
+        assert Lfactor_to_gq([1, -4, 5], 5) == (1, 5)
+        # supersingular boundary case (x + 2)^2 over F_4: root -2 of
+        # absolute value exactly sqrt(4) must be accepted
+        assert Lfactor_to_gq([1, 4, 4]) == (1, 4)
+        # a factored payload with one non-Weil factor is rejected even
+        # though the product is still self-dual
+        assert Lfactor_to_gq([[[1, 2, 2], 1], [[1, 10, 2], 1]], 2) is None
+        assert Lfactor_to_gq([[[1, 10, 2], 1]], 2) is None
+        # over proper prime powers the Weil condition is necessary but not
+        # sufficient: no elliptic curve over F_25 has trace 0 (Honda-Tate),
+        # so 1 + 25T^2 gets no link even though (1, 25) is in the database,
+        # while the supersingular class 1.4.e is genuine and linked
+        assert Lfactor_to_gq([1, 0, 25]) == (1, 25)
+        assert Lfactor_to_label_and_link_if_exists([1, 0, 25]) == ''
+        with self.app.test_request_context():
+            assert '/Variety/Abelian/Fq/1/4/e' in Lfactor_to_label_and_link_if_exists([1, 4, 4])
+
+    def test_Lfactor_degenerate_payloads(self):
+        # Empty or malformed Euler factor data must give no label, not a 500
+        # (polynomial_unroll used to raise IndexError on an empty list).
+        from lmfdb.lfunctions.Lfunctionutilities import (
+            Lfactor_to_gq, Lfactor_to_label_and_link_if_exists)
+        assert Lfactor_to_gq([], 2) is None
+        assert Lfactor_to_gq(None, 2) is None
+        assert Lfactor_to_gq('1 + 2*T', 2) is None
+        assert Lfactor_to_gq([None, None], 2) is None
+        # malformed factored payloads: empty factor list, empty factor,
+        # missing exponent, zero exponent (empty product)
+        assert Lfactor_to_gq([[]], 2) is None
+        assert Lfactor_to_gq([[[], 1]], 2) is None
+        assert Lfactor_to_gq([[[1, 2, 2]]], 2) is None
+        assert Lfactor_to_gq([[[1, 2, 2], 0]], 2) is None
+        # the caller renders an empty table cell for all of these
+        assert Lfactor_to_label_and_link_if_exists([], 2) == ''
+        assert Lfactor_to_label_and_link_if_exists([[[1, 2, 2], 0]], 2) == ''
+        assert Lfactor_to_label_and_link_if_exists([1, 10, 2], 2) == ''
+
     def test_LDirichlet(self):
         L = self.tc.get('/L/Character/Dirichlet/19/9/', follow_redirects=True)
         assert '0.4813597783' in L.get_data(as_text=True)

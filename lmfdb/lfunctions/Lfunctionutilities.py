@@ -187,14 +187,24 @@ def seriesvar(index, seriestype):
     return ""
 
 def polynomial_unroll(poly):
-    """Convert a list of coefficients (or a list of [coefficients, exponent]
-    pairs describing a factorization) into a polynomial.
+    """Convert a nonempty list of coefficients (or a nonempty list of
+    [coefficients, exponent] pairs describing a factorization) into a
+    polynomial.
+
+    Raise ValueError on empty or non-list input; malformed entries raise
+    the TypeError/ValueError of the underlying polynomial construction
+    (Lfactor_to_gq catches all of these).
     """
+    if not isinstance(poly, (list, tuple)) or not poly:
+        raise ValueError("Euler factor must be a nonempty list")
     if isinstance(poly[0], list):
         expanded_factor_list = []
         for fac, exponent in poly:
             expanded_factor_list.extend([fac] * exponent)
-        return prod(coeff_to_poly(fac) for fac in expanded_factor_list)
+        # the initial value makes an empty product the constant polynomial 1
+        # rather than the integer 1 (whose degree method raises)
+        return prod((coeff_to_poly(fac) for fac in expanded_factor_list),
+                    coeff_to_poly([1]))
     return coeff_to_poly(poly)
 
 def polynomial_unroll_get_gq(poly):
@@ -213,10 +223,16 @@ def Lfactor_to_gq(poly, p=None):
 
     The associated Weil polynomial x^{2g} + a_1 x^{2g-1} + ... + q^g is the
     reversal, so we require even degree 2g > 0, integer coefficients, constant
-    coefficient 1, leading coefficient q^g, and the self-duality
-    a_{2g-i} = q^{g-i} a_i imposed by the Weil pairing.  If p is given (the
-    prime of the Euler factor), we require q = p; otherwise we require q to be
-    a prime power.
+    coefficient 1, leading coefficient q^g, the self-duality
+    a_{2g-i} = q^{g-i} a_i imposed by the Weil pairing, and that all complex
+    roots of the reversal have absolute value sqrt(q) (the Riemann hypothesis
+    part of the Weil conjectures).  For q = p prime these conditions are,
+    by Honda-Tate, exactly the condition for a matching isogeny class of
+    abelian varieties over F_p to exist; for proper prime powers a Weil
+    polynomial need not be realizable (e.g. x^2 + 25 over F_25), and
+    Lfactor_to_label_and_link_if_exists double-checks against the database.
+    If p is given (the prime of the Euler factor), we require q = p;
+    otherwise we require q to be a prime power.
     """
     try:
         Lpoly = polynomial_unroll(poly)
@@ -229,7 +245,7 @@ def Lfactor_to_gq(poly, p=None):
             return None
         coeffs = [ZZ(c) for c in coeffs]
         q = coeffs[deg].nth_root(g)
-    except (TypeError, ValueError, ArithmeticError):
+    except (TypeError, ValueError, ArithmeticError, IndexError):
         return None
     if p is not None:
         if q != p:
@@ -237,6 +253,16 @@ def Lfactor_to_gq(poly, p=None):
     elif q < 2 or not q.is_prime_power():
         return None
     if any(coeffs[2*g - i] != q**(g - i) * coeffs[i] for i in range(g)):
+        return None
+    # Self-duality does not imply the root condition: e.g. [1, 10, 2] is
+    # self-dual with q = 2, but x^2 + 10x + 2 has real roots of absolute
+    # value != sqrt(2) (violating the Hasse bound |a_2| <= 2 sqrt(2)), so it
+    # is not the Euler factor of any elliptic curve over F_2.  Sage's test is
+    # exact (Sturm's theorem on the trace polynomial, no floating point).
+    try:
+        if not PolynomialRing(ZZ, 'x')(coeffs[::-1]).is_weil_polynomial():
+            return None
+    except (TypeError, ValueError, ArithmeticError, NotImplementedError):
         return None
     return (g, q)
 
@@ -275,6 +301,16 @@ def Lfactor_to_label_and_link_if_exists(poly, p=None):
     label = Lfactor_to_label(poly)
     if not AbvarExists(g, q):
         return label
+    if not q.is_prime():
+        # For q = p prime, Lfactor_to_gq passing guarantees by Honda-Tate
+        # that the isogeny class exists (and av_fq_isog is complete for each
+        # (g, q) it covers), but for proper prime powers a Weil polynomial
+        # need not be realizable (e.g. x^2 + 25 over F_25 is not the Weil
+        # polynomial of an elliptic curve), so confirm before linking.  Not
+        # reached from L-function pages, which always pass the row's prime.
+        from lmfdb import db
+        if db.av_fq_isog.lookup(label, projection='label') is None:
+            return ''
     return '<a href="%s">%s</a>' % (url_for_label(label), label)
 
 
