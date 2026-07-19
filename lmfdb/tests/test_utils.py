@@ -32,7 +32,9 @@ from lmfdb.utils import (
 
 from lmfdb.utils.completeness import (
     results_complete,
+    Congruence,
     IntegerSet,
+    to_rset,
     top,
     bottom,
     infinity,
@@ -309,6 +311,59 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual((A + A).bound_under(X), 50000)
         self.assertEqual((A * B).bound_under(X), 1000)
 
+    def test_congruence_set(self):
+        # "Multiple of N" searches produce {"$mod": [r, m]} constraints, which used to
+        # raise an error in the completeness checker; see
+        # https://github.com/LMFDB/lmfdb/issues/6822
+        C = Congruence(7, [0])
+        self.assertEqual(14 in C, True)
+        self.assertEqual(15 in C, False)
+        self.assertEqual(-7 in C, True)
+        self.assertEqual(Congruence(6, [0, 2, 4]), Congruence(2, [0]))
+        self.assertEqual(Congruence(5, [0, 1, 2, 3, 4]).is_trivial(), True)
+        self.assertEqual(Congruence(4, [1]).intersection(Congruence(6, [3])), (Congruence(12, [9]), True))
+        self.assertEqual(Congruence(4, [0]).intersection(Congruence(4, [2]))[0].is_empty(), True)
+        self.assertEqual(Congruence(14, [0]).refines(C), True)
+        self.assertEqual(C.refines(Congruence(14, [0])), False)
+        self.assertEqual(Congruence(2, [0]).complement(), Congruence(2, [1]))
+
+        # to_rset ignores congruence conditions rather than raising an error
+        self.assertEqual(str(to_rset({"$mod": [0, 7]})), "(-oo, +oo)")
+
+        M7 = IntegerSet({"$mod": [0, 7]})
+        # An interval is not contained in the multiples of 7...
+        self.assertEqual(IntegerSet([1, 500000]).is_subset(M7), False)
+        self.assertEqual(IntegerSet([7, 700]).is_subset(M7), False)
+        # ...but multiples of 14 are, as are specific multiples of 7
+        self.assertEqual(IntegerSet({"$mod": [0, 14], "$lte": 100}).is_subset(M7), True)
+        self.assertEqual(IntegerSet({"$in": [7, 14, 21]}).is_subset(M7), True)
+        # The set of all multiples of 7 is unbounded
+        self.assertEqual(M7.is_subset(top(500000)), False)
+        self.assertEqual(M7.is_finite(), False)
+        self.assertEqual(7 in M7, True)
+        self.assertEqual(8 in M7, False)
+
+        # Interval endpoints are sharpened to satisfy the congruence
+        B = IntegerSet({"$mod": [0, 7], "$gte": 1, "$lte": 100})
+        self.assertEqual(str(B), "[7, 98] ∩ {n ≡ 0 (mod 7)}")
+        self.assertEqual(B.min(), 7)
+        self.assertEqual(B.max(), 98)
+        self.assertEqual(B.bounded(98), True)
+        self.assertEqual(B.is_subset(top(500000)), True)
+        self.assertEqual(list(B.intersection(IntegerSet([1, 30]))), [7, 14, 21, 28])
+        self.assertEqual(list(IntegerSet({"$mod": [3, 5], "$gte": 0, "$lte": 20})), [3, 8, 13, 18])
+        self.assertEqual(list(-IntegerSet({"$mod": [3, 5], "$gte": 0, "$lte": 20})), [-18, -13, -8, -3])
+
+        # Congruences combine via the CRT, and can be complemented
+        self.assertEqual(list(IntegerSet({"$and": [{"$mod": [0, 4]}, {"$mod": [0, 6]}], "$gte": 1, "$lte": 100})), [12, 24, 36, 48, 60, 72, 84, 96])
+        self.assertEqual(bool(IntegerSet({"$and": [{"$mod": [0, 4]}, {"$mod": [2, 4]}]})), False)
+        self.assertEqual(list(IntegerSet({"$not": {"$mod": [0, 2]}, "$gte": 0, "$lte": 10})), [1, 3, 5, 7, 9])
+
+        # Unions keep the congruence when possible
+        U = IntegerSet({"$mod": [0, 7], "$gte": 0, "$lte": 20}).union(IntegerSet({"$mod": [0, 7], "$gte": 30, "$lte": 50}))
+        self.assertEqual(str(U), "([0, 14] ∪ [35, 49]) ∩ {n ≡ 0 (mod 7)}")
+        self.assertEqual(B.difference(IntegerSet([0, 50])).min(), 56)
+
     def test_complete(self):
         from lmfdb import db
         for tup in [
@@ -356,6 +411,8 @@ class UtilsTest(unittest.TestCase):
                 ("gps_groups", {'permutation_degree': {'$gte': 10, '$lte': 14}}, "groups with minimal permutation degree at most 15"),
                 ("gps_groups", {'linQ_dim': 5}, r"groups with linear $\Q$-degree at most 6"),
                 ("ec_curvedata", {'conductor': {'$gte': 300, '$lte': 3000}}, "elliptic curves with conductor at most 500000"),
+                ("ec_curvedata", {'conductor': {'$mod': [0, 7], '$lte': 400000}}, "elliptic curves with conductor at most 500000"),
+                ("mf_newforms", {'level': {'$mod': [0, 4], '$lte': 20}, 'weight': {'$gte': 2, '$lte': 10}}, "newforms with $Nk^2$ at most 4000"),
                 ("ec_curvedata", {'conductor': 1000003}, "elliptic curves with prime conductor at most 300 million"),
                 ("ec_curvedata", {'conductor': 76204800}, "elliptic curves with 7-smooth conductor"),
                 ("ec_curvedata", {'absD': {'$gte': 50000, '$lte': 100000}}, "elliptic curves with minimal discriminant at most 500000"),
@@ -400,6 +457,9 @@ class UtilsTest(unittest.TestCase):
                 ("artin_reps", {'GaloisLabel': '8T34', 'Conductor': {'$gte': 1, '$lte': 200}}),
                 ("gps_groups", {'order': {'$gte': 300, '$lte': 600}}),
                 ("ec_curvedata", {'rank': 6}),
+                # "Multiple of" searches used to raise an error rather than returning False (issue #6822)
+                ("ec_curvedata", {'conductor': {'$mod': [0, 7]}}),
+                ("mf_newforms", {'level': {'$mod': [0, 23]}, 'weight': 1}),
                 ("hgcwa_passports", {'genus': 6}),
                 ("av_fq_isog", {'g': 6, 'q': 3}),
                 ("belyi_galmaps", {'deg': 8}),
