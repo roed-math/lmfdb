@@ -1,13 +1,28 @@
 Process for making png images of group names for subgroup diagrams:
 
- - run dump-group-names.py  It produces eqguts.tex which has the latex and 
+ - run dump-group-names.py  It produces eqguts.tex which has the latex and
    prettyindex to be uploaded to the db
 
  - move eqguts.tex to the images directory
 
  - in the images directory run latex eq.tex
 
- - in the images directory run dvipng -bg Transparent eq.dvi
+ - in the images directory run dvipng -D 120 -bg Transparent eq.dvi
+   (the images currently in gps_images were rendered at 120 dpi; dvipng's
+   default of 100 dpi produces images that are ~17% smaller)
 
  - run load-img.py from this directory
 
+Incremental process (only render names missing from gps_images, e.g. after
+new groups/subgroups are added; see https://github.com/LMFDB/lmfdb/issues/7028):
+
+ - run dump-missing-group-names.py instead of dump-group-names.py (writes
+   eqguts.tex/prettyindex containing only the missing names, most-referenced
+   first)
+
+ - move eqguts.tex to the images directory, then run latex and dvipng there
+   as above
+
+ - run load-new-imgs.py from this directory: it writes "imageadder" with only
+   the genuinely new rows and appends them with db.gps_images.copy_from,
+   instead of rewriting the whole table
