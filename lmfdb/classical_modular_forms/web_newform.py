@@ -1444,19 +1444,23 @@ function switch_basis(btype) {
         vals = conrey_chi.genvalues
         sage_genvalues = get_sage_genvalues(self.level, self.char_order, vals, sage_zeta_order)
         sage_trace_bound = self.ns_data.get('trace_bound')
-        traces_string = "traces = "+str(self.traces[0:sage_trace_bound]).replace(" ","")
-        #format string to look nice in the code box if it's long (check 3912/1/cp/a e.g.)
-        line_length = 70
-        i = 0
-        sage_traces_up_to_bound = ""
-        while i < len(traces_string):
-            sage_traces_up_to_bound += traces_string[i:i+line_length]
-            i += line_length
-            while sage_traces_up_to_bound[-1] != "," and i < len(traces_string):
-                sage_traces_up_to_bound += traces_string[i]
-                i += 1
-            if i < len(traces_string):
-                sage_traces_up_to_bound += "\n"
+        traces_list = str(self.traces[0:sage_trace_bound]).replace(" ","")
+
+        def wrap_traces(traces_string, continuation=""):
+            #format string to look nice in the code box if it's long (check 3912/1/cp/a e.g.)
+            #continuation is appended before each inserted line break (e.g. " \\" for gp)
+            line_length = 70
+            i = 0
+            wrapped = ""
+            while i < len(traces_string):
+                wrapped += traces_string[i:i+line_length]
+                i += line_length
+                while wrapped[-1] != "," and i < len(traces_string):
+                    wrapped += traces_string[i]
+                    i += 1
+                if i < len(traces_string):
+                    wrapped += continuation + "\n"
+            return wrapped
 
         data = { 'N': self.level,
                  'k': self.weight,
@@ -1464,11 +1468,20 @@ function switch_basis(btype) {
                  'sage_zeta_order': sage_zeta_order,
                  'sage_genvalues': sage_genvalues,
                  'sage_trace_bound': sage_trace_bound,
-                 'sage_traces': sage_traces_up_to_bound,
+                 'sage_traces': wrap_traces("traces = " + traces_list),
+                 'gp_traces': wrap_traces("traces = " + traces_list, " \\"),
+                 'magma_traces': wrap_traces("traces := " + traces_list + ";"),
                }
         for prop in code:
             if not isinstance(code[prop], dict):
                 continue
             for lang in code[prop]:
-                code[prop][lang] = code[prop][lang].format(**data)
+                if isinstance(code[prop][lang], str):
+                    code[prop][lang] = code[prop][lang].format(**data)
+        if self.weight == 1:
+            # Magma does not support weight 1 newforms (Newforms errors out and
+            # modular symbols require weight at least 2), so we cannot select
+            # the newform there
+            code['newform'].pop('magma', None)
+            code['qexp'].pop('magma', None)
         return code
