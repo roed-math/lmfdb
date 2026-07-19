@@ -9,7 +9,7 @@ from copy import copy
 from itertools import islice
 from types import GeneratorType
 
-from flask import make_response, flash, url_for, current_app
+from flask import make_response, flash, url_for, current_app, has_request_context, request
 from markupsafe import Markup, escape
 from werkzeug.utils import cached_property
 from sage.all import (
@@ -423,6 +423,31 @@ def to_dict(args, exclude=[], **kwds):
         elif values:
             d[key] = values
     return d
+
+
+def get_search_type(info, default=""):
+    r"""
+    Determine the search type from an info dictionary built from request arguments.
+
+    A ``search_type`` provided in the request takes precedence over the
+    ``hst`` fallback (the hidden input recording the currently displayed
+    search type, used by the prev/next paging buttons and accepted for old
+    bookmarked URLs).  Since :func:`to_dict` drops empty values, an
+    explicitly submitted empty ``search_type`` (produced by list-mode
+    search buttons) is recovered from the raw request arguments, so that
+    it is not overridden by a stale ``hst``.
+
+    INPUT:
+
+    - ``info`` -- a dictionary, as produced by :func:`to_dict`
+    - ``default`` -- the search type to return if none was specified
+    """
+    search_type = info.get("search_type")
+    if search_type is None and has_request_context() and "search_type" in request.args:
+        search_type = request.args["search_type"] # empty, since to_dict drops empty values
+    if search_type is None:
+        search_type = info.get("hst", default)
+    return search_type
 
 
 def is_exact(x):

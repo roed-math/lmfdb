@@ -14,7 +14,7 @@ from lmfdb.utils import (
     clean_input, parse_ints, parse_bracketed_posints, parse_rational,
     parse_restricted, integer_options, search_wrap, Downloader,
     SearchArray, TextBox, TextBoxNoEg, SelectBox, CountBox, BasicSpacer, SearchButton, RowSpacer,
-    to_dict, web_latex, integer_divisors, redirect_no_cache)
+    to_dict, get_search_type, web_latex, integer_divisors, redirect_no_cache)
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_columns import SearchColumns, MathCol, ProcessedCol, MultiProcessedCol, RationalCol
 from lmfdb.api import datapage
@@ -403,7 +403,7 @@ class HGMDownload(Downloader):
     table = db.hgm_motives  # overridden if family search
 
     def get_table(self, info):
-        search_type = info.get("search_type", info.get("hst", "Motive"))
+        search_type = get_search_type(info, default="Motive")
         if search_type in ["Family", "RandomFamily"]:
             return db.hgm_families
         else:
@@ -420,7 +420,7 @@ class HGMDownload(Downloader):
              bread=lambda: get_bread([("Search results", '')]),
              learnmore=learnmore_list)
 def hgm_search(info, query):
-    info["search_type"] = search_type = info.get("search_type", info.get("hst", "Motive"))
+    info["search_type"] = search_type = get_search_type(info, default="Motive")
     if search_type in ["Family", "RandomFamily"]:
         query['__title__'] = r'Hypergeometric family over $\Q$ search results'
         query['__err_title__'] = r'Hypergeometric family over $\Q$ search input error'
