@@ -41,9 +41,13 @@ The overall limit is at about 10000 results and beyond that it is necessary to f
 <ul>
 <li><code>_format</code> is used to specify the encoding. Possible values are html (default), json, yaml and raw.
 The raw format requires <code>_fields</code> and returns only the contents of the requested fields,
-with no ids or metadata: one line per record, each value JSON-encoded, and multiple fields joined by the delimiter.
-Since integers, floats, strings and (nested) lists are encoded as valid PARI/GP expressions,
-a single-field raw response can be read directly into PARI/GP with <code>readvec</code>.</li>
+with no ids or metadata: one line per record.
+When a single field is requested, each line is that field's value, JSON-encoded;
+since an integer, float, string or (nested) list is then also a valid PARI/GP expression,
+a single-field raw response can be read directly into PARI/GP with <code>readvec</code>.
+When several fields are requested, each line is instead a JSON array of their values (JSON Lines),
+so every record is self-delimiting and parses unambiguously with a JSON reader,
+even when a value itself contains the delimiter used in the query.</li>
 <li>To only retrieve a selected list of entries per document,
 use <code>_fields=name1,name2</code> to reduce the amount of data sent back to only those fields named <code>name1</code> and <code>name2</code>.
 </li>

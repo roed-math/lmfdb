@@ -319,10 +319,17 @@ def api_query(table, id=None):
     if format.lower() == "raw":
         # Just the requested columns, one record per line, with no ids or
         # metadata wrapper, for easy consumption by scripts (LMFDB#1010).
-        # Values are JSON-encoded, so a line containing a single integer,
-        # float, string or (nested) list is also a valid PARI/GP expression;
-        # multiple columns are joined by DELIM.
-        out = "".join(DELIM.join(json.dumps(rec.get(col)) for col in raw_fields) + "\n" for rec in data)
+        # A single requested field is emitted as one JSON value per line, so
+        # that an integer, float, string or (nested) list is also a valid
+        # PARI/GP expression, readable directly with readvec. Several fields
+        # are emitted as one JSON array per line (JSON Lines): each record is
+        # then self-delimiting and parses unambiguously with a JSON reader,
+        # even when a value itself contains the query delimiter.
+        if len(raw_fields) == 1:
+            col = raw_fields[0]
+            out = "".join(json.dumps(rec.get(col)) + "\n" for rec in data)
+        else:
+            out = "".join(json.dumps([rec.get(col) for col in raw_fields]) + "\n" for rec in data)
         return Response(out, mimetype='text/plain')
 
     # preparing the datastructure
