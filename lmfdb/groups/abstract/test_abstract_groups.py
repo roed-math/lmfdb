@@ -90,3 +90,49 @@ class AbGpsTest(LmfdbTest):
     def test_subgroups(self):
         self.check_args("/Groups/Abstract/sub/78125.1385.15625.A","Group of order 31250000")
         self.check_args("/Groups/Abstract/sub/16384.mv.8._.BQX",'The ambient group is <a title="Abelian group [group.abelian]"')
+
+    def test_hash_display(self):
+        # Letter-labeled orders carry a genuine Magma hash, shown with a search link.
+        self.check_args("/Groups/Abstract/2016.a", [
+            "374703223365377769",
+            "hash=2016%23374703223365377769"])
+        # Identifiable/enumerated orders store hash == counter, so the row is suppressed.
+        self.not_check_args("/Groups/Abstract/60.5", "all groups with this order and hash")
+        self.not_check_args("/Groups/Abstract/512.11", "all groups with this order and hash")
+
+    def test_hash_search_column(self):
+        # An order#hash search returns the whole collision cluster; the optional
+        # hash column renders the value.
+        page = self.tc.get(
+            "/Groups/Abstract/?hash=5120%234714647875464396655&search_type=List&showcol=hash",
+            follow_redirects=True).get_data(as_text=True)
+        for lab in ["5120.cs", "5120.cw", "5120.db", "5120.dc", "5120.df"]:
+            assert lab in page, "%s not in hash search" % lab
+        assert "4714647875464396655" in page
+
+    def test_identify_perm(self):
+        # Permutation generators that GAP can identify redirect to the group homepage.
+        r = self.tc.get("/Groups/Abstract/identify?description=(1,2,3),(1,2)")
+        assert r.status_code in (301, 302) and "/Groups/Abstract/6.1" in r.headers["Location"]
+        r = self.tc.get("/Groups/Abstract/identify?description=(1,2,3,4,5),(1,2)")
+        assert r.status_code in (301, 302) and "/Groups/Abstract/120.34" in r.headers["Location"]
+        # A non-identifiable order returns a candidate list (no redirect).
+        r = self.tc.get("/Groups/Abstract/identify?description=2016PC3171906956164764984387211839562004878842403748156043542557808747")
+        assert r.status_code == 200 and b"2016.i" in r.data
+
+    def test_identify_errors(self):
+        # Garbage input returns a clean page (no 500) with an error message.
+        r = self.tc.get("/Groups/Abstract/identify?description=garbage")
+        assert r.status_code == 200 and b"Unrecognized description" in r.data
+        # Oversized permutation degree is rejected before any GAP computation.
+        self.check_args("/Groups/Abstract/identify?description=(513,1)",
+                        "Permutation degree must be at most 512")
+
+    def test_magma_identifiable(self):
+        # Lock the pipeline-era CanIdentifyGroup boundary (see identify.py docstring).
+        from lmfdb.groups.abstract.identify import magma_identifiable
+        expected = {512: False, 1024: False, 1152: False, 1536: False, 1920: False,
+                    2005: True, 2016: False, 2028: False, 2044: True, 2662: True,
+                    3125: True, 5050: True, 16807: False, 29282: False, 44100: False}
+        for n, e in expected.items():
+            assert magma_identifiable(n) == e, "magma_identifiable(%s) should be %s" % (n, e)

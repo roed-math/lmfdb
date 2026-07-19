@@ -72,6 +72,13 @@ from .web_groups import (
     missing_subs,
 )
 from .stats import GroupStats
+from .identify import (
+    identify_group,
+    describe_formats,
+    looks_like_permutation,
+    order_search_url,
+    hash_search_url,
+)
 
 
 abstract_group_label_regex = re.compile(r"^(\d+)\.([a-z]+|\d+)$")
@@ -1234,6 +1241,9 @@ def group_jump(info):
             if len(possible_labels) == 1:
                 return redirect(url_for(".by_label", label=possible_labels[0]))
         return redirect(url_for(".index", hash=jump))
+    # by permutation generators
+    if looks_like_permutation(jump):
+        return redirect(url_for(".identify_group_page", description=jump))
     # or as product of cyclic groups
     if CYCLIC_PRODUCT_RE.fullmatch(jump):
         invs = [n.strip() for n in jump.upper().replace("C", "").replace("X", "*").replace("^", "_").split("*")]
@@ -1561,7 +1571,8 @@ group_columns = SearchColumns([
     MultiProcessedCol("type", "group.type", "Type - length",
                       ["abelian", "nilpotent", "solvable", "smith_abelian_invariants", "nilpotency_class", "derived_length", "composition_length"],
                       show_type,
-                      align="center")])
+                      align="center"),
+    ProcessedCol("hash", "group.hash", "Hash", lambda h: "" if h is None else str(h), default=False, align="right", short_title="hash")])
 
 @search_wrap(
     table=db.gps_groups,
@@ -2670,6 +2681,28 @@ def download_trivial_construction(dltype):  #trival gp construction is different
     return s
 
 
+@abstract_page.route("/identify")
+def identify_group_page():
+    description = request.args.get("description", "")
+    res = identify_group(description)
+    if res["status"] == "redirect":
+        return redirect(url_for(".by_label", label=res["label"]))
+    info = to_dict(request.args, search_array=GroupsSearchArray())
+    info["res"] = res
+    info["formats"] = describe_formats()
+    if res.get("order") and res.get("hash") is not None:
+        info["hash_url"] = hash_search_url(res["order"], res["hash"])
+    if res.get("order"):
+        info["order_url"] = order_search_url(res["order"])
+    return render_template(
+        "abstract-identify.html",
+        title="Identify a finite group",
+        bread=get_bread([("Identify", "")]),
+        info=info,
+        learnmore=learnmore_list(),
+    )
+
+
 @abstract_page.route("/<label>/download/<download_type>")
 def download_group(**args):
     dltype = args["download_type"]
@@ -2806,7 +2839,7 @@ class GroupsSearchArray(SearchArray):
             ("irrQ_degree", r"$\Q$-irrep degree", ["irrQ_degree", "counter"])
     ]
     jump_example = "8.3"
-    jump_egspan = "e.g. 8.3, GL(2,3), 8T34, C3:C4, C2*A5, C16.D4, 6#1, or 12.4.2.b1.a1"
+    jump_egspan = "e.g. 8.3, GL(2,3), 8T34, C3:C4, C2*A5, C16.D4, 6#1, (1,2,3)(4,5),(1,2), or 12.4.2.b1.a1"
     jump_prompt = "Label or name"
     jump_knowl = "group.find_input"
 
@@ -3725,8 +3758,7 @@ def group_data(label, ambient=None, aut=False, profiledata=None):
         if profiledata[1] is None:
             ans += "Isomorphism class has not been identified<br />"
         else:
-            # TODO: add search link to groups with this order and hash
-            ans += f"{display_knowl('group.hash', 'Hash')} : {profiledata[1]}<br />"
+            ans += f"{display_knowl('group.hash', 'Hash')}: <a href=\"{url_for('.index', hash=f'{order}#{profiledata[1]}')}\">{profiledata[1]}</a><br />"
         isomorphism_label = "Subgroups with this data:"
     else:
         if label.startswith("ab/"):
@@ -3787,8 +3819,7 @@ def group_data(label, ambient=None, aut=False, profiledata=None):
         if profiledata[4] is None:
             ans += "Quotient isomorphism class has not been identified<br />"
         else:
-            # TODO: add hash knowl and search link to groups with this order and hash
-            ans += f"Quotient hash: {profiledata[4]}<br />"
+            ans += f"{display_knowl('group.hash', 'Quotient hash')}: <a href=\"{url_for('.index', hash=f'{ambient_order // order}#{profiledata[4]}')}\">{profiledata[4]}</a><br />"
 
     if gp and not gp.live():
         if ambient is None:
