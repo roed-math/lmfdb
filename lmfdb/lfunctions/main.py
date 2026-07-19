@@ -44,15 +44,16 @@ from lmfdb.classical_modular_forms.web_newform import convert_newformlabel_from_
 from lmfdb.classical_modular_forms.main import set_Trn, process_an_constraints
 from lmfdb.artin_representations.main import parse_artin_label
 from lmfdb.utils.search_parsing import (
-    parse_bool, parse_ints, parse_ints_to_list, parse_floats, parse_noop, parse_mod1,
+    parse_bool, parse_ints, parse_floats, parse_noop, parse_mod1,
     parse_element_of, parse_not_element_of, search_parser)
 from lmfdb.utils import (
     to_dict, signtocolour, rgbtohex, key_for_numerically_sort, display_float,
     prop_int_pretty, round_to_half_int, display_complex, bigint_knowl,
     search_wrap, list_to_factored_poly_otherorder, flash_error,
-    parse_primes, coeff_to_poly, Downloader,
+    parse_primes, coeff_to_poly, integer_options, Downloader,
     SearchArray, TextBox, SelectBox, YesNoBox, CountBox,
     SubsetBox, TextBoxWithSelect, RowSpacer, redirect_no_cache)
+from lmfdb.utils.search_boxes import ColumnController
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.names_and_urls import names_and_urls
 from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol, CheckCol, ProcessedCol, MultiProcessedCol
@@ -117,6 +118,9 @@ def rational():
     info = to_dict(request.args, search_array=LFunctionSearchArray(force_rational=True), rational="yes")
     if request.args:
         info['search_type'] = search_type = info.get('search_type', info.get('hst', ''))
+        if search_type == 'EulerL':
+            # Backward compatibility with old URLs
+            info['search_type'] = search_type = 'Euler'
         if search_type in ['List', '', 'Random', 'Diagram']:
             return l_function_search(info)
         elif search_type == 'Traces':
@@ -174,8 +178,10 @@ def process_trace(res, info, query):
     if info.get('view_modp') == 'reductions':
         q = int(info['an_modulo'])
         for L in res:
-            for n in info['Tr_n']:
-                L['dirichlet_coefficients'][n] %= q
+            if L.get('dirichlet_coefficients'):
+                for n in info['Tr_n']:
+                    # a_n is stored at index n-1
+                    L['dirichlet_coefficients'][n - 1] %= q
     return res
 
 def process_euler(res, info, query):
@@ -342,16 +348,74 @@ lfunc_columns = SearchColumns([
                  download_col="instance_urls")],
     db_cols=['algebraic', 'analytic_conductor', 'bad_primes', 'central_character', 'conductor', 'degree', 'instance_urls', 'label', 'motivic_weight', 'mu_real', 'mu_imag', 'nu_real_doubled', 'nu_imag', 'order_of_vanishing', 'primitive', 'rational', 'root_analytic_conductor', 'root_angle', 'self_dual', 'z1'])
 
-euler_factor_columns = SearchColumns([
-    MultiProcessedCol("label", "lfunction.label", "Label",
-                         ["label", "url"],
-                         lambda label, url: '<a href="%s">%s</a>' % (url, label),
-                      download_col="label")]
-    + [MathCol("euler%s" % p, "lfunction.euler_factor", r"$F_%s(T)$" % p, default=False) for p in prime_range(100)],
-    db_cols=1)
+# In the download path the body of trace_search/euler_search does not run
+# (the download shortcut returns before the query is built), so the columns
+# displayed are determined by these helpers, which mirror the logic of set_Trn
+# using only the contents of info.
+
+def _trace_range(info):
+    """
+    The list of n for which a_n is displayed in a trace search, mirroring set_Trn.
+    """
+    try:
+        ns = integer_options(info.get('n', '1-40'), 1000)
+    except (ValueError, TypeError):
+        return []
+    primality = info.get('n_primality', 'primes')
+    if primality == 'primes':
+        ns = [n for n in ns if ZZ(n).is_prime()]
+    elif primality == 'prime_powers':
+        ns = [n for n in ns if ZZ(n).is_prime_power()]
+    # Only 100 Dirichlet coefficients are stored
+    return [n for n in ns if 1 < n <= 100]
+
+def _euler_range(info):
+    """
+    The list of primes p for which F_p is displayed in an Euler factor search.
+    """
+    try:
+        ns = integer_options(info.get('n', '1-10'), 1000)
+    except (ValueError, TypeError):
+        return []
+    return [p for p in prime_range(100) if p in ns]
+
+def _label_col():
+    return MultiProcessedCol("label", "lfunction.label", "Label",
+                             ["label", "url"],
+                             lambda label, url: '<a href="%s">%s</a>' % (url, label),
+                             download_col="label")
+
+def _origins_col():
+    # origins is set from instance_urls in common_postprocess; the download uses instance_urls directly
+    return ProcessedCol("origins", "lfunction.underlying_object", "Origin",
+                        lambda origins: " ".join(f'<a href="{url_for("index")}{url.lstrip("/")}">{name}</a>' for name, url in origins),
+                        download_col="instance_urls")
+
+def _trace_col(n):
+    return ProcessedCol("a%s" % n, "lfunction.dirichlet_series", "$a_{%s}$" % n,
+                        lambda dc, n=n: dc[n - 1] if dc and len(dc) >= n else "",
+                        apply_download=lambda dc, n=n: dc[n - 1] if dc and len(dc) >= n else None,
+                        orig=["dirichlet_coefficients"],
+                        default=lambda info, n=n: n in _trace_range(info),
+                        align="center", mathmode=True)
+
+trace_columns = SearchColumns(
+    [_label_col(), _origins_col()]
+    + [_trace_col(n) for n in range(2, 101)],
+    db_cols=['dirichlet_coefficients', 'instance_urls', 'label'])
+
+euler_factor_columns = SearchColumns(
+    [_label_col(), _origins_col()]
+    + [MathCol("euler%s" % p, "lfunction.euler_product", r"$F_%s(T)$" % p,
+               default=lambda info, p=p: p in _euler_range(info))
+       for p in prime_range(100)],
+    db_cols=['euler_factors', 'instance_urls', 'label'] + ['euler%s' % p for p in prime_range(100)])
 
 class LfuncDownload(Downloader):
     table = db.lfunc_search
+    title = "L-functions"
+    short_name = "L-function"
+    var_name = "lfunctions"
 
     def postprocess(self, rec, info, query):
         rec['mus'] = list(zip(rec['mu_real'], rec['mu_imag']))
@@ -360,6 +424,28 @@ class LfuncDownload(Downloader):
         if info['search_array'].force_rational:
             # root_angle is either 0 or 0.5
             rec['root_number'] = 1 - int(4 * rec['root_angle'])
+        return rec
+
+class LfuncTraceDownload(LfuncDownload):
+    title = "L-function traces"
+    filebase = "lfunc_traces"
+
+    def postprocess(self, rec, info, query):
+        # Show reductions if requested, as in process_trace
+        if info.get('view_modp') == 'reductions':
+            try:
+                q = int(info.get('an_modulo', ''))
+            except ValueError:
+                q = 0
+            if q > 0 and rec.get('dirichlet_coefficients'):
+                rec['dirichlet_coefficients'] = [an % q for an in rec['dirichlet_coefficients']]
+        return rec
+
+class LfuncEulerDownload(LfuncDownload):
+    title = "L-function Euler factors"
+    filebase = "lfunc_euler_factors"
+
+    def postprocess(self, rec, info, query):
         return rec
 
 @search_wrap(table=db.lfunc_search,
@@ -388,12 +474,14 @@ def l_function_search(info, query):
              table=db.lfunc_search,
              title="L-function trace search",
              err_title="L-function search input error",
-             shortcuts={'jump':jump_box},
+             columns=trace_columns,
+             shortcuts={'jump':jump_box, 'download': LfuncTraceDownload()},
              postprocess=process_trace,
              learnmore=learnmore_list,
              bread=lambda: get_bread(breads=[("Search results", " ")]))
 def trace_search(info, query):
-    set_Trn(info, query)
+    # Only 100 Dirichlet coefficients are stored
+    set_Trn(info, query, limit=100)
     common_parse(info, query)
     process_an_constraints(info, query, qfield='dirichlet_coefficients')
 
@@ -430,7 +518,7 @@ def parse_euler(inp, query, qfield, p=None, d=None):
              title="L-function Euler product search",
              err_title="L-function search input error",
              columns=euler_factor_columns,
-             shortcuts={'jump':jump_box, 'download': LfuncDownload()},
+             shortcuts={'jump':jump_box, 'download': LfuncEulerDownload()},
              postprocess=process_euler,
              learnmore=learnmore_list,
              bread=lambda: get_bread(breads=[("Search results", " ")]))
@@ -446,8 +534,8 @@ def euler_search(info, query):
         flash_error("To search on <span style='color:black'>Euler factors</span>, you must specify one <span style='color:black'>degree</span>.")
         info['err'] = ''
         raise ValueError("To search on Euler factors, you must specify one degree")
-    p_range = parse_ints_to_list(info['n'])
-    info["showcol"] = ".".join("euler%s" % p for p in prime_range(100) if p in p_range)
+    # Euler factors are only stored for p < 100
+    info['Tr_n'] = _euler_range(info)
     for p in prime_range(100):
         parse_euler(info, query, 'euler_constraints', qfield='euler%s' % p, p=p, d=d)
 
@@ -679,6 +767,14 @@ class LFunctionSearchArray(SearchArray):
                  ('Random', 'Random L-function'),
                  ('Diagram', 'Diagram search')]
         return self._search_again(info, L)
+
+    def _buttons(self, info=None):
+        buttons = super()._buttons(info)
+        if self._st(info) in ("Traces", "Euler"):
+            # The trace and Euler factor tables have their own "Columns to display"
+            # input, so we remove the column dropdown
+            buttons = [B for B in buttons if not isinstance(B, ColumnController)]
+        return buttons
 
     def html(self, info=None):
         # We need to override html to add the trace and euler factor inputs

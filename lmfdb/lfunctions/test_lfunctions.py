@@ -611,8 +611,69 @@ class LfunctionTest(LmfdbTest):
 
     def test_trace_search_mod_q(self):
         L = self.tc.get('L/rational?conductor=37&degree=2&search_type=Traces&an_constraints=a11+%3D1&an_modulo=3&view_modp=reductions')
-        assert '2-37-1.1-c1-0-1' in L.get_data(as_text=True)
-        assert '2-37-1.1-c1-0-0' not in L.get_data(as_text=True)
+        page = L.get_data(as_text=True)
+        assert '2-37-1.1-c1-0-1' in page
+        assert '2-37-1.1-c1-0-0' not in page
+        # The displayed traces are reduced mod 3 (a_2 = -2 for 37.a)
+        assert r'\(1\)' in page
+        assert r'\(-2\)' not in page
+
+    # ------------------------------------------------------
+    # Testing downloads of trace and Euler factor searches
+    # ------------------------------------------------------
+
+    def _get_search_download(self, search_type, lang, **kwds):
+        query_string = {'search_type': search_type, 'conductor': '37', 'degree': '2',
+                        'download': '1', 'Submit': lang,
+                        'query': "{'degree': 2, 'conductor': 37, 'rational': True}"}
+        query_string.update(kwds)
+        response = self.tc.get('/L/rational', query_string=query_string)
+        assert response.status_code == 200
+        assert 'attachment' in response.headers.get('Content-Disposition', '')
+        return response.get_data(as_text=True)
+
+    def _parse_sage_download(self, body):
+        import re
+        from ast import literal_eval
+        columns = literal_eval(re.search(r'^columns = (.*)$', body, re.M).group(1))
+        data = literal_eval(re.search(r'^data = (\[.*?^\])$', body, re.S | re.M).group(1))
+        return [dict(zip(columns, row)) for row in data]
+
+    def test_trace_search_download(self):
+        body = self._get_search_download('Traces', 'sage')
+        recs = {rec['label']: rec for rec in self._parse_sage_download(body)}
+        assert set(recs) == {'2-37-1.1-c1-0-0', '2-37-1.1-c1-0-1'}
+        # The L-function of elliptic curve 37.a has a_2 = -2, a_3 = -3, a_11 = -5
+        rec = recs['2-37-1.1-c1-0-1']
+        assert rec['a2'] == -2 and rec['a3'] == -3 and rec['a11'] == -5
+        assert 'EllipticCurve/Q/37/a' in rec['instance_urls']
+        # Column selection via the n range
+        body = self._get_search_download('Traces', 'text', n='2-6', n_primality='all')
+        assert '[Label, Origin, $a_{2}$, $a_{3}$, $a_{4}$, $a_{5}$, $a_{6}$]' in body
+
+    def test_trace_search_download_mod_q(self):
+        body = self._get_search_download('Traces', 'sage', an_modulo='3', view_modp='reductions')
+        recs = {rec['label']: rec for rec in self._parse_sage_download(body)}
+        rec = recs['2-37-1.1-c1-0-1']
+        assert rec['a2'] == 1 and rec['a3'] == 0 and rec['a11'] == 1
+
+    def test_euler_search_download(self):
+        body = self._get_search_download('Euler', 'sage')
+        recs = {rec['label']: rec for rec in self._parse_sage_download(body)}
+        assert set(recs) == {'2-37-1.1-c1-0-0', '2-37-1.1-c1-0-1'}
+        # 37.a has F_2(T) = 1 + 2T + 2T^2 and F_37(T) = 1 + T
+        rec = recs['2-37-1.1-c1-0-1']
+        assert rec['euler2'] == [1, 2, 2]
+        body = self._get_search_download('Euler', 'sage', n='2-40')
+        recs = {rec['label']: rec for rec in self._parse_sage_download(body)}
+        assert recs['2-37-1.1-c1-0-1']['euler37'] == [1, 1, 0]
+
+    def test_euler_search_old_name(self):
+        # search_type=EulerL appears in old URLs
+        L = self.tc.get('L/rational?conductor=37&degree=2&search_type=EulerL')
+        page = L.get_data(as_text=True)
+        assert 'Invalid search type' not in page
+        assert '2-37-1.1-c1-0-1' in page
 
     # ------------------------------------------------------
     # Testing units not tested above
