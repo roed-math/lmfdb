@@ -50,6 +50,13 @@ class MaassTest(LmfdbTest):
         L = self.tc.get("/ModularForm/GL2/Q/Maass/19.0.1.205.1")
         assert "coefficients" in L.get_data(as_text=True) and "-1.236693" in L.get_data(as_text=True) and "1.858211" in L.get_data(as_text=True)
 
+    def test_full_label(self):
+        # the full 5-component label should be displayed on the homepage,
+        # whether it is reached via the short or the long form of the label
+        for url_label in ["2.32", "2.0.1.32.1"]:
+            L = self.tc.get("/ModularForm/GL2/Q/Maass/" + url_label)
+            assert "2.0.1.32.1" in L.get_data(as_text=True)
+
     def test_underlying_data(self):
         data = self.tc.get("/ModularForm/GL2/Q/Maass/data/42.42").get_data(as_text=True)
         assert ("maass_rigor" in data and "symmetry" in data)
