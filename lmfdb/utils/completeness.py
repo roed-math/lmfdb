@@ -349,7 +349,7 @@ def to_rset_cong(query):
     if isinstance(query, RealSet):
         return query, triv, True
     if isinstance(query, NumberSet):
-        return query.rset, getattr(query, "cong", triv), True
+        return query.rset, getattr(query, "cong", triv), query.exact
     if isinstance(query, (list, tuple)) and len(query) == 2:  # closed and open intervals
         return RealSet(query), triv, True
     if isinstance(query, set):
@@ -512,14 +512,55 @@ def interval_abs(I):
     return RealSet(Rpos.intersection(I), interval_neg(Rneg.intersection(I)))
 
 
+def _arith_exact(*sets):
+    """
+    Whether an operation that only looks at real sets can produce an exact result for
+    these inputs: each must be exactly represented, with a trivial congruence
+    (congruence constraints are dropped by such operations).
+    """
+    return all(S.exact and (not isinstance(S, IntegerSet) or S.cong.is_trivial()) for S in sets)
+
+
+def _prod_exact(*sets):
+    """
+    Whether a product, quotient or inverse of these sets is exact: in addition to the
+    requirements of ``_arith_exact``, any integer operand must be a finite set of
+    points, since products of integer intervals over-approximate (for example
+    ``[2,4] * [2,4] = [4,16]`` contains 5, which is not a product).
+    """
+    return _arith_exact(*sets) and all(
+        not isinstance(S, IntegerSet) or all(I.lower() == I.upper() for I in S.rset)
+        for S in sets)
+
+
+def _set_exact(ans, exact):
+    """
+    Set the ``exact`` flag on ``ans``, upgrading to True when the representation is
+    empty (an empty over-approximation forces the set it describes to be empty too).
+    """
+    ans.exact = exact or not ans.rset
+    return ans
+
+
 class NumberSet:
     """
     A set of real numbers, as specified either as a number or a query dictionary.
 
     Supports arithmetic operations, union, intersection and inequalities.  The subclass IntegerSet supports iteration.
+
+    The attribute ``exact`` records whether ``rset`` describes the input exactly:
+    ``rset`` always contains the set described by the input, with equality when
+    ``exact`` is True.  Inexact sets are safe over-approximations; operations
+    propagate the flag conservatively, and completeness certifications
+    (``is_subset``, ``difference``) never rely on a set that is not known exactly
+    on the side where over-approximation would be unsound.
     """
     def __init__(self, x):
-        self.rset = to_rset(x)
+        rset, cong, exact = to_rset_cong(x)
+        self.rset = rset
+        # A NumberSet only records the real set, so a nontrivial congruence constraint
+        # makes it inexact; an empty set is always exact
+        self.exact = (exact and cong.is_trivial()) or not rset
 
     def __repr__(self):
         return repr(self.rset)
@@ -531,20 +572,24 @@ class NumberSet:
         return x in self.rset
 
     def __add__(self, other):
-        return self.__class__(RealSet(*[interval_sum(I, J) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_sum(I, J) for I in self.rset for J in other.rset])),
+                          _arith_exact(self, other))
 
     def __neg__(self):
-        return self.__class__(RealSet(*[interval_neg(I) for I in self.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_neg(I) for I in self.rset])),
+                          _arith_exact(self))
 
     def __sub__(self, other):
-        return self.__class__(RealSet(*[interval_sum(I, interval_neg(J)[0]) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_sum(I, interval_neg(J)[0]) for I in self.rset for J in other.rset])),
+                          _arith_exact(self, other))
 
     def __mul__(self, other):
         """
         A set containing all products of elements in this set.  The result will be sharp for real sets,
         but may be proper for integer sets (for example, [2,4] * [2,4] = [4,16] and contains 5,7,10,11,13,14,15)
         """
-        return self.__class__(RealSet(*[interval_mul(I, J) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_mul(I, J) for I in self.rset for J in other.rset])),
+                          _prod_exact(self, other))
 
     def __invert__(self):
         """
@@ -553,7 +598,8 @@ class NumberSet:
 
         We never raise a zero division error, instead implicitly intersecting with the complement of 0
         """
-        return NumberSet(RealSet(*[interval_inv(I) for I in self.rset]))
+        return _set_exact(NumberSet(RealSet(*[interval_inv(I) for I in self.rset])),
+                          _prod_exact(self))
 
     def __truediv__(self, other):
         """
@@ -561,14 +607,16 @@ class NumberSet:
 
         We never raise a zero division error, instead implicitly intersecting other with the complement of 0
         """
-        return NumberSet(
+        return _set_exact(NumberSet(
             RealSet(*[interval_mul(I, interval_inv(J.intersection(Rneg))[0])
                       for I in self.rset for J in other.rset]).union(
             RealSet(*[interval_mul(I, interval_inv(J.intersection(Rpos))[0])
-                      for I in self.rset for J in other.rset])))
+                      for I in self.rset for J in other.rset]))),
+            _prod_exact(self, other))
 
     def __abs__(self):
-        return self.__class__(RealSet(*[interval_abs(I) for I in self.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_abs(I) for I in self.rset])),
+                          _arith_exact(self))
 
     def pow_cap(self, other, k):
         """
@@ -579,19 +627,40 @@ class NumberSet:
         a = other.rset.sup()
         if a is infinity:
             return self
-        return self.intersection(top(a**k))
+        ans = self.intersection(top(a**k))
+        # The cap is computed from other's representation, so it is only known to be
+        # sharp when other is exact
+        return _set_exact(ans, ans.exact and other.exact)
 
     def union(self, *others):
-        return self.__class__(self.rset.union(*[other.rset for other in others]))
+        return _set_exact(self.__class__(self.rset.union(*[other.rset for other in others])),
+                          _arith_exact(self, *others))
 
     def intersection(self, *others):
-        return self.__class__(self.rset.intersection(*[other.rset for other in others]))
+        return _set_exact(self.__class__(self.rset.intersection(*[other.rset for other in others])),
+                          _arith_exact(self, *others))
 
     def difference(self, *others):
-        return self.__class__(self.rset.difference(*[other.rset for other in others]))
+        """
+        A set containing the elements of this set lying in none of the others.
+
+        Only sets that are known exactly can safely be subtracted (removing an
+        over-approximation could remove elements that belong in the difference), so
+        any inexact arguments are skipped, leaving a larger but still safe result.
+        """
+        keep = [other.rset for other in others if _arith_exact(other)]
+        rset = self.rset.difference(*keep) if keep else self.rset
+        return _set_exact(self.__class__(rset), self.exact and len(keep) == len(others))
 
     def is_subset(self, other):
-        return self.rset.is_subset(other.rset)
+        """
+        Whether this set is certified to be a subset of ``other``.
+
+        A False result only means that containment could not be certified; in
+        particular containment in a set that is not known exactly is never certified,
+        since membership in an over-approximation proves nothing.
+        """
+        return _arith_exact(other) and self.rset.is_subset(other.rset)
 
     def __le__(self, other):
         """
@@ -720,25 +789,35 @@ class IntegerSet(NumberSet):
     """
     The set of integer points within a real set that satisfy a congruence condition
     (trivial unless the input includes ``$mod`` constraints)
+
+    The attribute ``exact`` records whether this data describes the input exactly:
+    the integer points of ``rset`` satisfying ``cong`` always contain the set
+    described by the input, with equality when ``exact`` is True.  Inexact sets arise
+    for example from unions of branches with different ranges and congruences (which
+    need not be describable by a single range and congruence), and are safe
+    over-approximations: it is always sound to iterate over them, bound them, or use
+    them on the left of ``is_subset``, but ``is_subset`` never certifies containment
+    in an inexact set and ``difference`` never subtracts one.
     """
     def __init__(self, x):
-        rset, cong, _ = to_rset_cong(x)
-        self._set_rset_cong(rset, cong)
+        self._set_rset_cong(*to_rset_cong(x))
 
-    def _set_rset_cong(self, rset, cong):
+    def _set_rset_cong(self, rset, cong, exact=True):
         if cong.is_empty():
             self.rset, self.cong = RealSet(), Congruence()
         else:
             self.rset = integer_normalize(rset, cong)
             self.cong = Congruence() if not self.rset else cong
+        # An empty over-approximation forces the described set to be empty as well
+        self.exact = exact or not self.rset
 
     @classmethod
-    def _make(cls, rset, cong):
+    def _make(cls, rset, cong, exact=True):
         """
-        Construct directly from a RealSet and a Congruence.
+        Construct directly from a RealSet, a Congruence and an exactness flag.
         """
         ans = cls.__new__(cls)
-        ans._set_rset_cong(rset, cong)
+        ans._set_rset_cong(rset, cong, exact)
         return ans
 
     def __repr__(self):
@@ -751,11 +830,15 @@ class IntegerSet(NumberSet):
         return f"{rset} ∩ {{n ≡ {res} (mod {self.cong.modulus})}}"
 
     def __contains__(self, x):
+        """
+        Membership in the representation; when ``exact`` is False, a True answer only
+        means that ``x`` may lie in the described set.
+        """
         return x in ZZ and x in self.rset and ZZ(x) in self.cong
 
     def __neg__(self):
         cong = Congruence(self.cong.modulus, [-r for r in self.cong.residues])
-        return self._make(RealSet(*[interval_neg(I) for I in self.rset]), cong)
+        return self._make(RealSet(*[interval_neg(I) for I in self.rset]), cong, self.exact)
 
     def union(self, *others):
         ans = self
@@ -764,30 +847,37 @@ class IntegerSet(NumberSet):
                 other = IntegerSet(other)
             ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
             if not ans.rset:
-                ans = self._make(other.rset, ocong)
+                ans = self._make(other.rset, ocong, other.exact)
             elif not other.rset:
                 pass
             elif ans.cong == ocong:
-                ans = self._make(ans.rset.union(other.rset), ans.cong)
+                ans = self._make(ans.rset.union(other.rset), ans.cong, ans.exact and other.exact)
             elif ans.cong.is_trivial() and other.rset.is_subset(ans.rset):
+                # other's elements all lie in ans already, so the union is ans itself
                 pass
             elif ocong.is_trivial() and ans.rset.is_subset(other.rset):
-                ans = self._make(other.rset, ocong)
+                ans = self._make(other.rset, ocong, other.exact)
             else:
-                # The union need not be describable by a single congruence, so the
-                # result may be a proper superset (which is safe for completeness checks)
-                ans = self._make(ans.rset.union(other.rset), ans.cong.union(ocong)[0])
+                # The union need not be describable by a single congruence: it is exact
+                # only when the ranges agree and the congruences combine exactly, and
+                # otherwise is a proper superset (a safe over-approximation, recorded
+                # by the exact flag so that it is never later treated as exact)
+                cong, ce = ans.cong.union(ocong)
+                exact = ans.exact and other.exact and ce and ans.rset == other.rset
+                ans = self._make(ans.rset.union(other.rset), cong, exact)
         return ans
 
     def intersection(self, *others):
-        rset, cong = self.rset, self.cong
+        rset, cong, exact = self.rset, self.cong, self.exact
         for other in others:
             if not isinstance(other, NumberSet):
                 other = IntegerSet(other)
+            exact = exact and other.exact
             if isinstance(other, IntegerSet):
-                cong = cong.intersection(other.cong)[0]
+                cong, ce = cong.intersection(other.cong)
+                exact = exact and ce
             rset = rset.intersection(other.rset)
-        return self._make(rset, cong)
+        return self._make(rset, cong, exact)
 
     def difference(self, *others):
         ans = self
@@ -795,17 +885,31 @@ class IntegerSet(NumberSet):
             if not isinstance(other, NumberSet):
                 other = IntegerSet(other)
             ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
-            if ans.cong.refines(ocong):
-                # Every element of ans satisfies other's congruence, so exactly
-                # the part of ans within other's real set is removed
-                ans = self._make(ans.rset.difference(other.rset), ans.cong)
-            # Otherwise we cannot certify what is removed; keeping ans unchanged
-            # is a safe over-approximation
+            if other.exact and ans.cong.refines(ocong):
+                # other is known exactly and every element of ans satisfies other's
+                # congruence, so exactly the part of ans within other's real set is
+                # removed
+                ans = self._make(ans.rset.difference(other.rset), ans.cong, ans.exact)
+            elif not ans.rset.intersection(other.rset):
+                # Nothing to remove
+                pass
+            else:
+                # We cannot certify what should be removed: subtracting an
+                # over-approximation could remove elements that belong in the
+                # difference.  Keeping ans unchanged is a safe over-approximation,
+                # but the result is no longer exact.
+                ans = self._make(ans.rset, ans.cong, False)
         return ans
 
     def is_subset(self, other):
         if not self.rset:
             return True
+        if not other.exact:
+            # other's representation may properly contain the set it describes, so
+            # containment in the representation certifies nothing; note that it is
+            # fine for self to be inexact, since certifying an over-approximation
+            # of self also certifies self
+            return False
         ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
         if self.cong.refines(ocong) and self.rset.is_subset(other.rset):
             return True
@@ -830,11 +934,12 @@ class IntegerSet(NumberSet):
             [2, 4]
         """
         if isinstance(other, IntegerSet):
-            return self.__class__(
+            return _set_exact(self.__class__(
                 RealSet(*[interval_mul(I, interval_inv(J.intersection(inf_mone))[0])
                           for I in self.rset for J in other.rset]).union(
                 RealSet(*[interval_mul(I, interval_inv(J.intersection(one_inf))[0])
-                          for I in self.rset for J in other.rset])))
+                          for I in self.rset for J in other.rset]))),
+                _prod_exact(self, other))
 
         return super().__div__(other)
 
@@ -915,7 +1020,11 @@ class IntegerSet(NumberSet):
             O = self.intersection(I)
             if O:
                 M = min(M, v)
-                self = self.difference(O)
+                # Subtract I itself (which is exact, coming from a static table)
+                # rather than O: when self is inexact O is too, and difference
+                # refuses to subtract inexact sets.  Removing all of I is sound
+                # here, since every element removed is covered by I.
+                self = self.difference(I)
             if not self.rset:
                 return M
 
