@@ -1091,6 +1091,20 @@ class WebAbstractGroup(WebObj):
         return props
 
     @lazy_attribute
+    def show_hash(self):
+        # The isomorphism-invariant hash, shown only when it carries information
+        # beyond the label.  For identifiable/enumerated orders the stored hash
+        # equals the label counter (pure redundancy), so we suppress it there;
+        # letter-labeled orders (2016.a, ...) and Magma-only orders (6561.*)
+        # carry the genuine Magma hash and display it.
+        if self.live() or not isinstance(self._data, dict):
+            return None
+        h = self._data.get("hash")
+        if h is None or h == self.counter:
+            return None
+        return int(h)
+
+    @lazy_attribute
     def has_subgroups(self):
         if self.live():
             return False
