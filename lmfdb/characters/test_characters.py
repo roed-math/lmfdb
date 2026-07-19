@@ -52,6 +52,51 @@ class DirichletSearchTest(LmfdbTest):
         W = self.tc.get('/Character/Dirichlet/?conductor=111')
         assert '111.m' in W.get_data(as_text=True)
 
+    def test_primitive_search(self):
+        # A primitive character has modulus equal to its conductor, which is
+        # used to answer these searches from the (conductor, modulus, orbit)
+        # index; see issue #6733
+        W = self.tc.get('/Character/Dirichlet/?conductor=17&is_primitive=yes')
+        data = W.get_data(as_text=True)
+        assert 'Results (4 matches)' in data
+        for label in ['17.b', '17.c', '17.d', '17.e']:
+            assert label in data
+        W = self.tc.get('/Character/Dirichlet/?conductor=17,61&is_primitive=yes')
+        data = W.get_data(as_text=True)
+        assert '17.e' in data and '61.b' in data
+        W = self.tc.get('/Character/Dirichlet/?modulus=61&is_primitive=yes')
+        assert '61.h' in W.get_data(as_text=True)
+        W = self.tc.get('/Character/Dirichlet/?conductor=17&modulus=10-20&is_primitive=yes')
+        assert '17.e' in W.get_data(as_text=True)
+
+    def test_contradictory_search(self):
+        # Searches that provably have no results are answered without
+        # scanning the table; see issues #6733 and #6422
+        queries = ['order=3&parity=odd',  # odd order forces even parity
+                   'order=3&parity=odd&is_primitive=yes&is_real=no',
+                   'is_real=yes&order=5',  # real characters have order at most 2
+                   'is_real=no&order=1-2',
+                   'modulus=100&conductor=17',  # conductor divides modulus
+                   'modulus=17&conductor=17&is_primitive=no',
+                   'conductor=17&modulus=18-20&is_primitive=yes',
+                   'inducing=3.b&order=3',  # 3.b has order 2
+                   'inducing=3.b&parity=even',  # 3.b is odd
+                   'inducing=3.b&is_real=no',  # 3.b is real
+                   'inducing=3.b&conductor=5']  # induced characters have conductor 3
+        for q in queries:
+            W = self.tc.get('/Character/Dirichlet/?' + q)
+            data = W.get_data(as_text=True)
+            assert 'This search returns no results because' in data, q
+            assert 'No matches' in data, q
+
+    def test_inducing_search(self):
+        W = self.tc.get('/Character/Dirichlet/?inducing=3.b&modulus=1-100')
+        data = W.get_data(as_text=True)
+        assert '6.b' in data and '15.c' in data
+        # compatible constraints on inherited quantities are harmless
+        W = self.tc.get('/Character/Dirichlet/?inducing=3.b&modulus=1-100&order=2&parity=odd&is_real=yes')
+        assert '15.c' in W.get_data(as_text=True)
+
     def test_nextprev(self):
         W = self.tc.get('/Character/Dirichlet/?start=200&count=25&order=3')
         assert r'288.i' in W.get_data(as_text=True)
