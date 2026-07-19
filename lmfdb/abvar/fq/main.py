@@ -714,7 +714,15 @@ abvar_columns = SearchColumns([
     ProcessedCol("number_fields", "av.fq.number_field", "Number fields", lambda nfs: ", ".join(nf_display_knowl(nf, field_pretty(nf)) for nf in nfs), default=False),
     SearchCol("galois_groups_pretty", "nf.galois_group", "Galois groups", download_col="galois_groups", default=False),
     SearchCol("decomposition_display_search", "av.decomposition", "Isogeny factors", download_col="decompositionraw")],
-    db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "is_geometrically_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "curve_counts", "curves", "abvar_count", "abvar_counts", "jacobian_count", "hyp_count", "number_fields", "galois_groups", "slopes", "newton_elevation", "twist_count", "max_twist_degree", "geometric_extension_degree", "angle_rank", "angle_corank", "is_supersingular", "has_principal_polarization", "has_jacobian", "is_cyclic", "noncyclic_primes"])
+    db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "is_geometrically_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "curve_counts", "abvar_count", "abvar_counts", "jacobian_count", "hyp_count", "number_fields", "galois_groups", "slopes", "newton_elevation", "twist_count", "max_twist_degree", "geometric_extension_degree", "angle_rank", "angle_corank", "is_supersingular", "has_principal_polarization", "has_jacobian", "is_cyclic", "noncyclic_primes"])
+
+# The curves column holds potentially long lists of equations (up to ~6000 per row, and
+# 2+ MB per page of search results), so - unlike the other columns - it is left out of the
+# fixed db_cols projection above and only fetched from the database when the column is
+# actually displayed or included in a download.  See LMFDB#6975.
+def curves_requested(info):
+    """Whether the (heavy, default-off) curves column is included in the current display/download."""
+    return any(col.name == "curves" and col.default(info) for col in abvar_columns.columns)
 
 def abvar_postprocess(res, info, query):
     gals = set()
@@ -742,6 +750,9 @@ def abvar_postprocess(res, info, query):
 )
 def abelian_variety_search(info, query):
     common_parse(info, query)
+    if curves_requested(info):
+        # Fetch the (heavy) curves arrays only when the Curves column is displayed (LMFDB#6975).
+        query["__projection__"] = abvar_columns.db_cols + ["curves"]
 
 @count_wrap(
     template="abvarfq-count-results.html",
