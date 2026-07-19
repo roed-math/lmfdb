@@ -1174,6 +1174,16 @@ table .knowl a {
  margin-left: 0;
  margin-right: 0;
 }
+/* Knowls opened inside a table cell insert a new full-width row (see
+   knowl_click_handler in lmfdb.js).  Inline-size containment keeps that row
+   from being counted when the browser computes the column widths, so opening
+   a knowl no longer pushes the other columns around (issue #6501): the box
+   simply spans the table's current width.  Content that is still too wide
+   scrolls horizontally inside the box instead of stretching the table. */
+td > .knowl-output {
+  contain: inline-size;
+  overflow-x: auto;
+}
 .knowl-output.loading {
  color: {{color.grey}};
  font-style: italic;
