@@ -1,6 +1,6 @@
 from .web_display import display_knowl
 from sage.structure.unique_representation import UniqueRepresentation
-from .utilities import plural_form
+from .utilities import plural_form, get_search_type
 
 class TdElt():
     _wrap_type = 'td'
@@ -699,8 +699,11 @@ class SearchArray(UniqueRepresentation):
                 types.append(("Diagram", "Diagram search"))
             return types
         else:
-            types = [("", "Search again"), ("Random", "Random %s" % self.noun)]
-            if has_diagram and info.get("search_type") != "Diagram":
+            # The value of the "Search again" button must be the current
+            # search type, so that clicking it does not switch mode
+            st = self._st(info)
+            types = [(st, "Search again"), ("Random", "Random %s" % self.noun)]
+            if has_diagram and st != "Diagram":
                 types.append(("Diagram", "Diagram search"))
             return types
 
@@ -761,7 +764,7 @@ class SearchArray(UniqueRepresentation):
 
     def _st(self, info):
         if info is not None:
-            search_type = info.get("search_type", info.get("hst", ""))
+            search_type = get_search_type(info)
             if search_type == "List":
                 # Want to avoid including search_type in URL when possible
                 search_type = ""

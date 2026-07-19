@@ -24,6 +24,7 @@ from lmfdb.app import app
 from lmfdb.utils import (
     flash_error,
     to_dict,
+    get_search_type,
     display_knowl,
     SearchArray,
     TextBox,
@@ -779,8 +780,7 @@ def index():
     bread = get_bread()
     info = to_dict(request.args, search_array=GroupsSearchArray())
     if request.args:
-        search_types = request.args.getlist("search_type")
-        info["search_type"] = search_type = search_types[-1] if search_types else info.get("hst", "")
+        info["search_type"] = search_type = get_search_type(info)
         if search_type in ["List", "", "Random", "Diagram"]:
             return group_search(info)
         # Preserve old abstract-group search URLs while directing users to the
