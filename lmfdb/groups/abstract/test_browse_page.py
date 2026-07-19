@@ -362,6 +362,48 @@ class AbGpsHomeTest(LmfdbTest):
         self.check_args("/Groups/Abstract/?frattini_label=4.2", "16.2")
         self.not_check_args("/Groups/Abstract/?frattini_label=4.2", "5.1")
 
+    def test_search_by_name(self):
+        r"""
+        Check that group-label search boxes also accept group names, resolving
+        them to labels (issue #6397).  Each case uses a name whose label is
+        already checked in a sibling test above, so name and label agree.
+        """
+        # center C2^3 == center 8.5 (cf. test_search_center)
+        self.check_args("/Groups/Abstract/?center_label=C2^3", ["64.212", "80.43"])
+        # aut_group C6 == aut_group 6.2 (cf. test_search_autgroup)
+        self.check_args("/Groups/Abstract/?aut_group=C6", ["7.1", "18.2"])
+        # commutator C8 == commutator 8.1 (cf. test_search_commutator)
+        self.check_args("/Groups/Abstract/?commutator_label=C8", ["32.20", "64.190"])
+        # central quotient C2^2 == central quotient 4.2 (cf. test_search_centralquot)
+        self.check_args("/Groups/Abstract/?central_quotient=C2^2", ["40.10", "64.87"])
+        # abelianization C8 == abelianization 8.1 (cf. test_search_abelianization)
+        self.check_args("/Groups/Abstract/?abelian_quotient=C8", ["72.19", "96.65"])
+        # Frattini C2^2 == Frattini 4.2 (cf. test_frattini_label_search)
+        self.check_args("/Groups/Abstract/?frattini_label=C2^2", "16.2")
+        # outer group C2^2 == outer group 4.2 (cf. test_outer_group_search)
+        self.check_args("/Groups/Abstract/?outer_group=C2^2", "8.1")
+        # TeX-like input is normalized (C_2^3 -> C2^3 -> 8.5)
+        self.check_args("/Groups/Abstract/?center_label=C_2^3", "64.212")
+        # a comma separated list may mix orders and names: the groups of order
+        # 6-8 whose center is of order 2 or is C6 are C6, D4 and Q8
+        self.check_args("/Groups/Abstract/?center_label=2,C6&order=6-8", ["6.2", "8.3", "8.4"])
+
+    def test_search_by_name_subgroups(self):
+        r"""
+        Check that names work in the subgroup and complex character searches.
+        """
+        # ambient C2^3 resolves to 8.5
+        self.check_args("/Groups/Abstract/?search_type=Subgroups&ambient=C2^3", "8.5")
+        # group A5 resolves to 60.5 in the complex character search
+        self.check_args("/Groups/Abstract/?search_type=ComplexCharacters&group=A5", "60.5")
+
+    def test_search_by_bad_name(self):
+        r"""
+        Check that an unrecognized name in a search box gives a sensible error.
+        """
+        self.check_args("/Groups/Abstract/?center_label=nonsensexyz", "Abstract groups search input error")
+        self.check_args("/Groups/Abstract/?aut_group=nonsensexyz", "Abstract groups search input error")
+
     def test_supersolvable_search(self):
         r"""
         Check that we can restrict to supersolvable groups or not only
