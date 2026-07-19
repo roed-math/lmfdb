@@ -380,19 +380,27 @@ def ec_multi_label_to_lmfdb_label(entry):
 
 
 def elliptic_curve_jump(info):
-    # If the Find box contains a comma-separated list of labels/coefficient vectors,
-    # multi_entry_jump_search returns a search page of those curves.
-    multi_jump = multi_entry_jump_search(
-        info,
-        parse_entry=ec_multi_label_to_lmfdb_label,
-        label_exists=db.ec_curvedata.label_exists,
-        index_endpoint=".rational_elliptic_curves",
-        object_name="elliptic curves",
-    )
-    if multi_jump is not None:
-        return multi_jump
-
     label = info.get('jump', '').replace(" ", "")
+    # The established single-curve input "f, h" (a two-polynomial Weierstrass equation
+    # such as "x^3 + 10*x + 17, x", meaning y^2 + h*y = f) contains a top-level comma
+    # but denotes one curve, not a list. Attempt that established parser first: only
+    # hand the input to multi_entry_jump_search (a comma-separated list of curves) when
+    # it is not a single-curve Weierstrass-polynomial input, so the equation syntax is
+    # preserved. Genuine label lists never match here (LMFDB labels contain a dot,
+    # coefficient vectors are bracketed, and Cremona labels do not fullmatch POLY_RE).
+    if not match_weierstrass_polys(label):
+        # If the Find box contains a comma-separated list of labels/coefficient vectors,
+        # multi_entry_jump_search returns a search page of those curves.
+        multi_jump = multi_entry_jump_search(
+            info,
+            parse_entry=ec_multi_label_to_lmfdb_label,
+            label_exists=db.ec_curvedata.label_exists,
+            index_endpoint=".rational_elliptic_curves",
+            object_name="elliptic curves",
+        )
+        if multi_jump is not None:
+            return multi_jump
+
     if label is None:
         return elliptic_curve_jump_error('', info)
     elif match_lmfdb_label(label):

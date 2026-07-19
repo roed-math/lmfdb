@@ -56,6 +56,11 @@ class EllCurveTest(LmfdbTest):
         self.check_args('/EllipticCurve/Q/?jump=11.a2%2C+banana%2C+389.a1&search=Go', ['11.a2', '389.a1', 'ignored'])
         # When no entry is valid, an error is shown
         self.check_args('/EllipticCurve/Q/?jump=banana%2C+kiwi&search=Go', 'None of the')
+        # Regression (LMFDB#6882 review): the two-polynomial Weierstrass syntax
+        # "f, h" contains a top-level comma but denotes a single curve, so it must
+        # NOT be intercepted as a multi-entry label list. This exact input is
+        # preserved byte-for-byte from the pre-existing test_browse_page.test_jump.
+        self.check_args("/EllipticCurve/Q/?jump=x%5E3+%2B+10*x+%2B+17%2C+x", r"\frac{109902239}{176525}")
 
     def test_Cond_search(self):
         L = self.tc.get('/EllipticCurve/Q/?start=0&conductor=1200&count=100')
