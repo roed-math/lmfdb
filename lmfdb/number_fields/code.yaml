@@ -31,7 +31,7 @@ field:
   comment: Define the number field
   sage: x = polygen(QQ);  K.<a> = NumberField(%s)
   pari: K = bnfinit(%s, 1)
-  magma: R<x> := PolynomialRing(Rationals()); K<a> := NumberField(%s);
+  magma: 'R<x> := PolynomialRing(Rationals()); K<a> := NumberField(%s : DoLinearExtension := true);'
   oscar: Qx, x = polynomial_ring(QQ); K, a = number_field(%s)
   
 poly:
@@ -154,7 +154,7 @@ class_number_formula:
     [polcoeff (lfunrootres (lfuncreate (K))[1][1][2], -1), 2^K.r1 * (2*Pi)^K.r2 * K.reg * K.no / (K.tu[1] * sqrt (abs (K.disc)))]
   magma: |
     /* self-contained Magma code snippet to compute the analytic class number formula */
-    Qx<x> := PolynomialRing(Rationals()); K<a> := NumberField(%s);
+    Qx<x> := PolynomialRing(Rationals()); K<a> := NumberField(%s : DoLinearExtension := true);
     OK := Integers(K); DK := Discriminant(OK);
     UK, fUK := UnitGroup(OK); clK, fclK := ClassGroup(OK);
     r1,r2 := Signature(K); RK := Regulator(K); RR := Parent(RK);
@@ -172,8 +172,8 @@ class_number_formula:
 galois_group:
   comment: Galois group
   sage:  K.galois_group()
-  pari:  polgalois(K.pol)
-  magma: G = GaloisGroup(K);
+  pari:  'if(poldegree(K.pol) <= 11, polgalois(K.pol), "polgalois only supports degree <= 11")'
+  magma: G := GaloisGroup(K);
   oscar: |
     G, Gtx = galois_group(K);
     degree(K) > 1 ? (G, transitive_group_identification(G)) : (G, nothing)
