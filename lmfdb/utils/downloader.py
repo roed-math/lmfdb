@@ -770,7 +770,23 @@ class Downloader():
                     seen.add(name)
             cols = [cols[i] for i in include]
             column_names = [column_names[i] for i in include]
-        data_format = [(col.title if isinstance(col.title, str) else col.title(info)) for col in cols]
+
+        def col_disp_title(col, prefer_short=False):
+            # The (short) title used to describe a column in the download header and definitions.
+            title = col.short_title if prefer_short else col.title
+            if title is None:
+                title = col.title
+            return title if isinstance(title, str) else title(info)
+
+        data_format = [col_disp_title(col) for col in cols]
+        # ColGroups without a download_col are downloaded as a nested list of their subcolumns
+        # (see ColGroup.download), so we record those subcolumns in order to describe them (#6477).
+        group_expansions = []  # list of (group_title, [subcolumn_titles])
+        for col in cols:
+            subcols = col.download_subcols(info)
+            if subcols:
+                group_expansions.append(
+                    (col_disp_title(col), [col_disp_title(sub, prefer_short=True) for sub in subcols]))
         first50 = [[col.download(rec) for col in cols] for rec in first50]
         if num_results > 10000:
             # Estimate the size of the download file.  This won't necessarily be a great estimate
@@ -799,6 +815,12 @@ class Downloader():
             # We then describe the columns included, both in a comment and as a variable
             yield lang.comment(' Each entry in the following data list has the form:\n')
             yield lang.comment('    [' + ', '.join(data_format) + ']\n')
+            # Grouped columns are downloaded as a nested list of their subcolumns, so we spell
+            # out the contents of each such list here (#6477).
+            if group_expansions:
+                yield lang.comment(' where the grouped columns are themselves lists:\n')
+                for gtitle, subtitles in group_expansions:
+                    yield lang.comment('    %s = [%s]\n' % (gtitle, ', '.join(subtitles)))
             yield lang.comment(' For more details, see the definitions at the bottom of the file.\n')
             if make_data_comment:
                 yield lang.comment(f'\n {make_data_comment}\n')
@@ -824,8 +846,13 @@ class Downloader():
                 yield "\n" + lang.func_start("make_data", "") + self.makedata_code(lang) + lang.function_end + "\n\n"
             # We need to be able to look up knowls within knowls, so to reduce the number of database calls we just get them all.
 
-            # We do some global preprocessing to get access to knowls that define the columns
-            if any(col.download_desc is None for col in cols):
+            # We do some global preprocessing to get access to knowls that define the columns.
+            # Grouped columns (ColGroups downloaded as a nested list) are expanded into their
+            # subcolumns so that each subcolumn is documented individually (#6477).
+            doc_plan = [(col, name, col.download_subcols(info)) for col, name in zip(cols, column_names)]
+            if any(c.download_desc is None
+                   for col, name, subcols in doc_plan
+                   for c in [col, *subcols]):
                 from lmfdb.knowledge.knowl import knowldb
                 all_knowls = {rec["id"]: (rec["title"], rec["content"]) for rec in knowldb.get_all_knowls(fields=["id", "title", "content"])}
                 knowl_re = re.compile(r"""\{\{\s*KNOWL\(\s*["'](?:[^"']+)["'],\s*(?:title\s*=\s*)?['"]([^"']+)['"]\s*\)\s*\}\}""")
@@ -839,12 +866,13 @@ class Downloader():
                     word = match.group(1)
                     return f"**{word}**"
 
-            # If we haven't specified a more specific download_desc, we use the column knowl to get a string to add to the bottom of the file for each column
-            for col, name in zip(cols, column_names):
+            # If we haven't specified a more specific download_desc, we use the column knowl to get a
+            # string to add to the bottom of the file for each column
+            def emit_col_doc(col, name, disp_title):
                 if col.download_desc is None:
                     knowldata = all_knowls.get(col.knowl)
                     if knowldata is None:
-                        continue
+                        return
                     # We want to remove KNOWL and DEFINES macros
                     _, content = knowldata
                     knowl = knowl_re.sub(knowl_subber, content)
@@ -854,19 +882,27 @@ class Downloader():
                 else:
                     knowl = col.download_desc
                 if knowl:
-                    if isinstance(col.title, str):
-                        title = col.title
+                    if name.lower() == disp_title.lower():
+                        yield lang.comment(f" {disp_title} --\n")
                     else:
-                        title = col.title(info)
-                    if name.lower() == title.lower():
-                        yield lang.comment(f" {title} --\n")
-                    else:
-                        yield lang.comment(f"{title} ({name}) --\n")
+                        yield lang.comment(f"{disp_title} ({name}) --\n")
                     for line in knowl.split("\n"):
                         if line.strip():
                             yield lang.comment("    " + line.rstrip() + "\n")
                         else:
                             yield lang.comment("\n")
                     yield lang.comment("\n\n")
+
+            for col, name, subcols in doc_plan:
+                if subcols:
+                    # A grouped column, downloaded as a list; introduce it and document each subcolumn.
+                    gtitle = col_disp_title(col)
+                    yield lang.comment(f" {gtitle} is a grouped column, downloaded as a list of the following subcolumns:\n\n")
+                    yield from emit_col_doc(col, name, gtitle)
+                    for sub in subcols:
+                        subname = sub.name if sub.download_col is None else sub.download_col
+                        yield from emit_col_doc(sub, subname, col_disp_title(sub, prefer_short=True))
+                else:
+                    yield from emit_col_doc(col, name, col_disp_title(col))
 
         return self._wrap_generator(make_download(), filename, lang=lang)
