@@ -67,27 +67,33 @@ def simplify_hyperelliptic(fh):
     return f.coefficients(sparse=False)
 
 
-def simplify_hyperelliptic_point(fh, pt):
+def simplify_hyperelliptic_scale(fh):
+    # The simplified model is y^2 = g with g = squarefree_part(n)*(4f+h^2)/n,
+    # where n is the content of 4f+h^2, so the y-coordinate of a point on the
+    # minimal model transforms as y -> (2y+h)/s, where s = sqrt(n/squarefree_part(n))
     xR = PolynomialRing(QQ, 'x')
     f = 4*xR(fh[0]) + xR(fh[1])**2
-    f1 = xR(fh[1])
-    n = gcd(f.coefficients())
+    n = ZZ(gcd(f.coefficients()))
+    return (n // integer_squarefree_part(n)).isqrt()
+
+
+def simplify_hyperelliptic_point(fh, pt):
+    s = simplify_hyperelliptic_scale(fh)
+    f1 = PolynomialRing(QQ, 'x')(fh[1])
     xzR = PolynomialRing(QQ,['x', 'z'])
     z = xzR('z')
     f1 = (xzR(f1)*z**(4-len(fh[1]))).homogenize(z)
-    return [pt[0], (2*pt[1] + f1([pt[0],pt[2]])) / n, pt[2]]
+    return [pt[0], (2*pt[1] + f1([pt[0],pt[2]])) / s, pt[2]]
 
 
 def comp_poly(fh):
-    xR = PolynomialRing(QQ, 'x')
-    f = 4*xR(fh[0]) + xR(fh[1])**2
-    f1 = xR(fh[1])
-    n = gcd(f.coefficients())
+    s = simplify_hyperelliptic_scale(fh)
+    f1 = PolynomialRing(QQ, 'x')(fh[1])
     xyzR = PolynomialRing(QQ,['x', 'y', 'z'])
     y = xyzR('y')
     z = xyzR('z')
     f1 = (xyzR(f1)*z**(4-len(fh[1]))).homogenize(z)
-    return (2*y + f1) / n
+    return (2*y + f1) / s
 
 
 def min_eqns_pretty(fh):
@@ -1120,34 +1126,35 @@ class WebG2C():
         code['show'] = {'sage':'', 'magma':''} # use default show names
         f,h = fh = data['min_eqn']
         g = simplify_hyperelliptic(fh)
-        code['curve'] = {'sage':'R.<x> = PolynomialRing(QQ); C = HyperellipticCurve(R(%s), R(%s));' % (f, h),
-                         'magma':'R<x> := PolynomialRing(Rationals()); C := HyperellipticCurve(R!%s, R!%s);' % (f, h) }
-        code['simple_curve'] = {'sage':'X = HyperellipticCurve(R(%s))' % (g), 'magma':'X,pi:= SimplifiedModel(C);' }
+        code['curve'] = {'sage':'R.<x> = PolynomialRing(QQ); Cmin = HyperellipticCurve(R(%s), R(%s)) # minimal equation' % (f, h),
+                         'magma':'R<x> := PolynomialRing(Rationals()); Cmin := HyperellipticCurve(R!%s, R!%s); // minimal equation' % (f, h) }
+        code['simple_curve'] = {'sage':'Csim = HyperellipticCurve(R(%s)); Csim # simplified equation' % (g),
+                                'magma':'Csim, pi := SimplifiedModel(Cmin); Csim; // simplified equation' }
         if data['abs_disc'] % 4096 == 0:
             ind2 = [a[0] for a in data['bad_lfactors']].index(2)
             bad2 = data['bad_lfactors'][ind2][1]
             magma_cond_option = ': ExcFactors:=[*<2,Valuation('+str(data['cond'])+',2),R!'+str(bad2)+'>*]'
         else:
             magma_cond_option = ''
-        code['cond'] = {'magma': 'Conductor(LSeries(C%s)); Factorization($1);' % magma_cond_option}
-        code['disc'] = {'magma':'Discriminant(C); Factorization(Integers()!$1);'}
-        code['geom_inv'] = {'sage':'C.igusa_clebsch_invariants(); [factor(a) for a in _]',
-                            'magma':'IgusaClebschInvariants(C); IgusaInvariants(C); G2Invariants(C);'}
-        code['aut'] = {'magma':'AutomorphismGroup(C); IdentifyGroup($1);'}
-        code['autQbar'] = {'magma':'AutomorphismGroup(ChangeRing(C,AlgebraicClosure(Rationals()))); IdentifyGroup($1);'}
-        code['num_rat_wpts'] = {'magma':'#Roots(HyperellipticPolynomials(SimplifiedModel(C)));'}
+        code['cond'] = {'magma': 'Conductor(LSeries(Cmin%s)); Factorization($1);' % magma_cond_option}
+        code['disc'] = {'magma':'Discriminant(Cmin); Factorization(Integers()!$1);'}
+        code['geom_inv'] = {'sage':'Cmin.igusa_clebsch_invariants(); [factor(a) for a in _]',
+                            'magma':'IgusaClebschInvariants(Cmin); IgusaInvariants(Cmin); G2Invariants(Cmin);'}
+        code['aut'] = {'magma':'AutomorphismGroup(Cmin); IdentifyGroup($1);'}
+        code['autQbar'] = {'magma':'AutomorphismGroup(ChangeRing(Cmin,AlgebraicClosure(Rationals()))); IdentifyGroup($1);'}
+        code['num_rat_wpts'] = {'magma':'#Roots(HyperellipticPolynomials(SimplifiedModel(Cmin)));'}
         if ratpts:
-            code['rat_pts'] = {'magma': '[' + ','.join("C![%s,%s,%s]" % (p[0], p[1], p[2]) for p in ratpts['rat_pts']) + ']; // minimal model'}
-            code['rat_pts_simp'] = {'magma': '[' + ','.join(["C![%s,%s,%s]" % (p[0], p[1], p[2]) for p in [simplify_hyperelliptic_point(data['min_eqn'], pt) for pt in ratpts['rat_pts']]]) + ']; // simplified model'}
-        code['mw_group'] = {'magma':'MordellWeilGroupGenus2(Jacobian(C));'}
-        code['two_selmer'] = {'magma':'TwoSelmerGroup(Jacobian(C)); NumberOfGenerators($1);'}
-        code['has_square_sha'] = {'magma':'HasSquareSha(Jacobian(C));'}
-        code['locally_solvable'] = {'magma':'f,h:=HyperellipticPolynomials(C); g:=4*f+h^2; HasPointsEverywhereLocally(g,2) and (#Roots(ChangeRing(g,RealField())) gt 0 or LeadingCoefficient(g) gt 0);'}
-        code['torsion_subgroup'] = {'magma':'TorsionSubgroup(Jacobian(SimplifiedModel(C))); AbelianInvariants($1);'}
-        code['decomp'] = {'magma':'HeuristicDecompositionFactors(C);'}
+            code['rat_pts'] = {'magma': '[' + ','.join("Cmin![%s,%s,%s]" % (p[0], p[1], p[2]) for p in ratpts['rat_pts']) + ']; // minimal model'}
+            code['rat_pts_simp'] = {'magma': '[' + ','.join(["Csim![%s,%s,%s]" % (p[0], p[1], p[2]) for p in [simplify_hyperelliptic_point(data['min_eqn'], pt) for pt in ratpts['rat_pts']]]) + ']; // simplified model'}
+        code['mw_group'] = {'magma':'MordellWeilGroupGenus2(Jacobian(Cmin));'}
+        code['two_selmer'] = {'magma':'TwoSelmerGroup(Jacobian(Cmin)); NumberOfGenerators($1);'}
+        code['has_square_sha'] = {'magma':'HasSquareSha(Jacobian(Cmin));'}
+        code['locally_solvable'] = {'magma':'f,h:=HyperellipticPolynomials(Cmin); g:=4*f+h^2; HasPointsEverywhereLocally(g,2) and (#Roots(ChangeRing(g,RealField())) gt 0 or LeadingCoefficient(g) gt 0);'}
+        code['torsion_subgroup'] = {'magma':'TorsionSubgroup(Jacobian(SimplifiedModel(Cmin))); AbelianInvariants($1);'}
+        code['decomp'] = {'magma':'HeuristicDecompositionFactors(Cmin);'}
         code['endos0'] = {'magma':'//Please install CHIMP (https://github.com/edgarcosta/CHIMP) if you want to run this code'}
-        code['endos1'] = {'magma':'HeuristicIsGL2(C); HeuristicEndomorphismDescription(C); HeuristicEndomorphismFieldOfDefinition(C);'}
-        code['endos2'] = {'magma':'HeuristicIsGL2(C : Geometric := true); HeuristicEndomorphismDescription(C : Geometric := true); HeuristicEndomorphismLatticeDescription(C);'}
+        code['endos1'] = {'magma':'HeuristicIsGL2(Cmin); HeuristicEndomorphismDescription(Cmin); HeuristicEndomorphismFieldOfDefinition(Cmin);'}
+        code['endos2'] = {'magma':'HeuristicIsGL2(Cmin : Geometric := true); HeuristicEndomorphismDescription(Cmin : Geometric := true); HeuristicEndomorphismLatticeDescription(Cmin);'}
 
         self._code = None
 
