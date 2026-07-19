@@ -134,6 +134,12 @@ class ModCrvTest(LmfdbTest):
         L = self.tc.get("/ModularCurve/Q/60.8640.313-60.eqq.1.4",follow_redirects=True)
         assert "Cusp orbits" in L.get_data(as_text=True)
         assert r"$8^{6}\cdot16^{3}$" in L.get_data(as_text=True)
+        # exponent 1 is displayed, so that a single orbit of size 8 is not
+        # misread as 8 orbits (issue #7038)
+        L = self.tc.get("/ModularCurve/Q/17.136.6.a.1",follow_redirects=True)
+        assert r"$8^{1}$" in L.get_data(as_text=True)
+        L = self.tc.get("/ModularCurve/Q/10.18.0.a.1",follow_redirects=True)
+        assert r"$1^{4}$" in L.get_data(as_text=True)
 
     def test_modcrv_label(self):
         L = self.tc.get("/ModularCurve/Q/48.576.21-48.bqz.1.2",follow_redirects=True)

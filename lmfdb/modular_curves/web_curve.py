@@ -543,7 +543,9 @@ class WebModCurve(WebObj):
     def cusp_orbits_display(self):
         if not self.cusp_orbits:
             return ""
-        return "$" + r"\cdot".join(f"{w}{showexp(n, wrap=False)}" for w, n in self.cusp_orbits) + "$"
+        # Always show the exponent (the number of orbits of each size), since a bare
+        # size is easily misread as a count of orbits (issue #7038)
+        return "$" + r"\cdot".join(f"{w}^{{{n}}}" for w, n in self.cusp_orbits) + "$"
 
     @lazy_attribute
     def cm_discriminant_list(self):
