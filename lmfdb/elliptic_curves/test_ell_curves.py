@@ -162,6 +162,28 @@ class EllCurveTest(LmfdbTest):
         assert ' is strictly larger than ' in L.get_data(as_text=True)
         assert '<a href=/EllipticCurve/3.3.49.1/512.1/e/3>3.3.49.1-512.1-e3</a>' in L.get_data(as_text=True)
 
+    def test_base_change_friends(self):
+        """
+        Test the display of base changes in the friends (Related
+        objects) column.
+        """
+        # 131.a1 has 5 base changes in the database, listed individually
+        L = self.tc.get('/EllipticCurve/Q/131/a/1')
+        text = L.get_data(as_text=True)
+        assert 'Base change 2.0.3.1-17161.1-a1' in text
+        assert '/EllipticCurve/2.0.3.1/17161.1/a/1' in text
+        assert 'Base change 2.0.8.1-17161.2-a1' in text
+        # 73.a2 has more than 10, so we just link to an ECNF search
+        L = self.tc.get('/EllipticCurve/Q/73/a/2')
+        text = L.get_data(as_text=True)
+        assert 'base_change_label=73.a2' in text
+        assert 'Base change 2' not in text
+        # 389.a1 has no base changes in the database
+        L = self.tc.get('/EllipticCurve/Q/389/a/1')
+        text = L.get_data(as_text=True)
+        assert 'base_change_label' not in text
+        assert 'Base change 2' not in text
+
     def test_990h(self):
         """
         Test the exceptional 990h/990.i optimal labelling.
