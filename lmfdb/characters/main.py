@@ -6,7 +6,8 @@ from sage.databases.cremona import class_to_int
 from lmfdb.utils import (
     to_dict, flash_error, SearchArray, YesNoBox, display_knowl, ParityBox,
     TextBox, CountBox, parse_bool, parse_ints, search_wrap, raw_typeset_poly,
-    StatsDisplay, totaler, proportioners, comma, flash_warning, Downloader, redirect_no_cache, CodeSnippet)
+    StatsDisplay, totaler, proportioners, comma, flash_warning, flash_info,
+    Downloader, redirect_no_cache, CodeSnippet)
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_parsing import parse_range3
 from lmfdb.utils.search_columns import SearchColumns, MathCol, LinkCol, CheckCol, ProcessedCol, MultiProcessedCol
@@ -158,10 +159,129 @@ class DirichSearchArray(SearchArray):
             ('Random', 'Random character')])
 
 
+def int_bounds(val):
+    """
+    The lower and upper bounds implied by a query value produced by
+    ``parse_ints`` (either an integer or a dictionary with keys among
+    ``$gte`` and ``$lte``).  Either bound may be ``None`` (unbounded), and
+    ``(None, None)`` is returned for values of any other shape.
+    """
+    if isinstance(val, int):
+        return val, val
+    if isinstance(val, dict) and val and all(key in ["$gte", "$lte"] for key in val):
+        return val.get("$gte"), val.get("$lte")
+    return None, None
+
+
+def forced_int(val):
+    """
+    The unique integer allowed by a query value produced by ``parse_ints``,
+    or ``None`` if the value does not pin down a single integer.
+    """
+    lo, hi = int_bounds(val)
+    return lo if lo is not None and lo == hi else None
+
+
+def force_no_results(info, query, reason, *args):
+    """
+    Used when the search constraints are contradictory for mathematical
+    reasons.  We tell the user why there are no results and replace the query
+    with one that provably returns nothing but is answered instantly from the
+    hash index on label, rather than letting postgres scan a large part of
+    the table to find nothing (see issues #6733 and #6422).
+    """
+    if "result_count" not in info:
+        flash_info("This search returns no results because " + reason + ".", *args)
+    query.clear()
+    query["label"] = ""
+    return True
+
+
+def refine_primitive_search(info, query):
+    """
+    A character is primitive if and only if its conductor equals its modulus.
+    When ``is_primitive=yes``, mirroring a constraint on one of
+    modulus/conductor onto the other column lets postgres answer searches
+    like ``conductor=17&is_primitive=yes`` from the (conductor, modulus,
+    orbit) index instead of scanning every character of conductor 17 and
+    filtering (issue #6733).  Returns True if the query was found to be
+    contradictory (and was replaced by an empty one).
+    """
+    def mirrorable(val):
+        return int_bounds(val) != (None, None)
+
+    def copy_value(val):
+        return dict(val) if isinstance(val, dict) else val
+
+    con = query.get("conductor")
+    mod = query.get("modulus")
+    if con is not None and mod is None:
+        if mirrorable(con):
+            query["modulus"] = copy_value(con)
+            if isinstance(con, int):
+                # conductor = modulus already forces primitivity
+                query.pop("is_primitive")
+    elif mod is not None and con is None:
+        if mirrorable(mod):
+            query["conductor"] = copy_value(mod)
+            if isinstance(mod, int):
+                query.pop("is_primitive")
+    elif con is not None and mod is not None and mirrorable(con) and mirrorable(mod):
+        clo, chi = int_bounds(con)
+        mlo, mhi = int_bounds(mod)
+        lo = clo if mlo is None else (mlo if clo is None else max(clo, mlo))
+        hi = chi if mhi is None else (mhi if chi is None else min(chi, mhi))
+        if lo is not None and hi is not None and lo > hi:
+            return force_no_results(info, query, "a primitive character has modulus equal to its conductor")
+        if lo is not None and lo == hi:
+            query["conductor"] = query["modulus"] = lo
+            query.pop("is_primitive")
+        else:
+            merged = {}
+            if lo is not None:
+                merged["$gte"] = lo
+            if hi is not None:
+                merged["$lte"] = hi
+            query["conductor"] = merged
+            query["modulus"] = dict(merged)
+    # Constraints coming from comma separated inputs are stored inside $or;
+    # mirror each branch separately, dropping impossible branches.
+    ors = query.get("$or")
+    if query.get("is_primitive") is True and isinstance(ors, list):
+        newors = []
+        for branch in ors:
+            bcon = branch.get("conductor")
+            bmod = branch.get("modulus")
+            if bcon is not None and bmod is None and mirrorable(bcon):
+                branch = dict(branch)
+                branch["modulus"] = copy_value(bcon)
+            elif bmod is not None and bcon is None and mirrorable(bmod):
+                branch = dict(branch)
+                branch["conductor"] = copy_value(bmod)
+            else:
+                fcon = forced_int(bcon)
+                fmod = forced_int(bmod)
+                if fcon is not None and fmod is not None and fcon != fmod:
+                    continue
+            newors.append(branch)
+        if not newors:
+            return force_no_results(info, query, "a primitive character has modulus equal to its conductor")
+        query["$or"] = newors
+
+
 def common_parse(info, query):
     parse_ints(info, query, "modulus", name="modulus")
     parse_ints(info, query, "conductor", name="conductor")
     parse_ints(info, query, "order", name="order")
+    if 'parity' in info:
+        parity = info['parity']
+        if parity == 'even':
+            query['is_even'] = True
+        elif parity == 'odd':
+            query['is_even'] = False
+    parse_bool(info, query, "is_primitive", name="is_primitive")
+    parse_bool(info, query, "is_real", name="is_real")
+    parse_bool(info, query, "is_minimal", name="is_minimal")
     if 'inducing' in info:
         try:
             validate_label(info['inducing'])
@@ -174,7 +294,8 @@ def common_parse(info, query):
                 parts_of_label = label.split(".")
             primitive_modulus = int(parts_of_label[0])
             primitive_orbit = class_to_int(parts_of_label[1])+1
-            if db.char_dirichlet.count({'modulus':primitive_modulus,'is_primitive':True,'orbit':primitive_orbit}) == 0:
+            psi = db.char_dirichlet.lucky({'modulus':primitive_modulus,'is_primitive':True,'orbit':primitive_orbit}, projection=["order", "is_even"])
+            if psi is None:
                 raise ValueError("Primitive character orbit not found")
 
             def incompatible(query):
@@ -190,22 +311,57 @@ def common_parse(info, query):
                         return False
                 return True
             if incompatible(query):
-                query["primitive_orbit"] = 0
-            else:
-                query["conductor"] = primitive_modulus
-                query["primitive_orbit"] = primitive_orbit
+                return force_no_results(info, query, "a character induced by %s has conductor %s", info['inducing'], primitive_modulus)
+            query["conductor"] = primitive_modulus
+            query["primitive_orbit"] = primitive_orbit
+            # A character induced by psi has the same order, parity and
+            # realness as psi; recording this catches contradictory searches
+            # and lets postgres use the (order, conductor, modulus, orbit)
+            # index instead of filtering all characters of this conductor.
+            olo, ohi = int_bounds(query["order"]) if "order" in query else (None, None)
+            if (olo is not None and olo > psi["order"]) or (ohi is not None and ohi < psi["order"]):
+                return force_no_results(info, query, "a character induced by %s has order %s", info['inducing'], psi["order"])
+            query["order"] = psi["order"]
+            if query.get("is_even") == (not psi["is_even"]):
+                return force_no_results(info, query, "a character induced by %s is %s", info['inducing'], "even" if psi["is_even"] else "odd")
+            query.pop("is_even", None)
+            psi_real = psi["order"] <= 2
+            if query.get("is_real") == (not psi_real):
+                return force_no_results(info, query, "a character induced by %s is %s", info['inducing'], "real" if psi_real else "not real")
+            query.pop("is_real", None)
         except ValueError:
             flash_error("%s is not the label of a primitive character in the database", info['inducing'])
             raise ValueError
-    if 'parity' in info:
-        parity = info['parity']
-        if parity == 'even':
-            query['is_even'] = True
-        elif parity == 'odd':
-            query['is_even'] = False
-    parse_bool(info, query, "is_primitive", name="is_primitive")
-    parse_bool(info, query, "is_real", name="is_real")
-    parse_bool(info, query, "is_minimal", name="is_minimal")
+    # Mathematical facts relating the search columns let us short-circuit
+    # or speed up several searches that postgres would otherwise answer by
+    # filtering a large part of the table (issues #6733 and #6422).
+    con = forced_int(query.get("conductor"))
+    mod = forced_int(query.get("modulus"))
+    if con is not None and mod is not None:
+        if con > 0 and mod % con != 0:
+            return force_no_results(info, query, "the conductor of a character divides its modulus, so there are no characters of modulus %s and conductor %s", mod, con)
+        if query.get("is_primitive") is False and con == mod:
+            return force_no_results(info, query, "an imprimitive character has conductor strictly smaller than its modulus")
+    if query.get("is_primitive") is True:
+        if refine_primitive_search(info, query):
+            return
+    if "order" in query:
+        olo, ohi = int_bounds(query["order"])
+        is_real = query.get("is_real")
+        if is_real is True and olo is not None and olo > 2:
+            return force_no_results(info, query, "a real character has order at most 2")
+        if is_real is False and ohi is not None and ohi <= 2:
+            return force_no_results(info, query, "every character of order at most 2 is real")
+        if (is_real is True and ohi is not None and ohi <= 2) or (is_real is False and olo is not None and olo > 2):
+            # the order constraint already forces the requested realness
+            del query["is_real"]
+        oforced = forced_int(query["order"])
+        if oforced is not None and oforced % 2 == 1:
+            # a character of odd order takes the value 1 at -1
+            if query.get("is_even") is False:
+                return force_no_results(info, query, "a character of odd order is even, so there are no odd characters of order %s", oforced)
+            if query.get("is_even") is True:
+                del query["is_even"]
 
 
 def validate_label(label):
