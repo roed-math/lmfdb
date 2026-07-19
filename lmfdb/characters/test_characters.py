@@ -58,6 +58,20 @@ class DirichletSearchTest(LmfdbTest):
         W = self.tc.get('/Character/Dirichlet/?start=100&count=25&order=3')
         assert r'169.c' in W.get_data(as_text=True)
 
+    def test_field_columns(self):
+        # The kernel and value field columns are computed in a batched
+        # postprocessing step (see issue #6008)
+        W = self.tc.get('/Character/Dirichlet/?search_type=List')
+        data = W.get_data(as_text=True)
+        # value field knowls for Q and Q(zeta_3)
+        assert 'label=1.1.1.1' in data
+        assert 'label=2.0.3.1' in data
+        # kernel field knowl for Q(zeta_5)
+        assert 'label=4.0.125.1' in data
+        # kernel fields are not computed for orders larger than 12
+        W = self.tc.get('/Character/Dirichlet/?order=13-100&search_type=List')
+        assert 'not computed' in W.get_data(as_text=True)
+
 class DirichletTableTest(LmfdbTest):
 
     def test_table(self):
