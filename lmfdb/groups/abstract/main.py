@@ -1186,6 +1186,16 @@ def normal_autdiagram(label):
     title = f"Diagram of normal subgroups up to automorphism for group {label}"
     return _subgroup_diagram(label, title, only=("normal", "aut"), style="normal_autdiagram")
 
+@abstract_page.route("/maximal_diagram/<label>")
+def maximal_diagram(label):
+    title = f"Diagram of maximal subgroups up to conjugation for group {label}"
+    return _subgroup_diagram(label, title, only=("maximal", ""), style="maximal_diagram")
+
+@abstract_page.route("/maximal_autdiagram/<label>")
+def maximal_autdiagram(label):
+    title = f"Diagram of maximal subgroups up to automorphism for group {label}"
+    return _subgroup_diagram(label, title, only=("maximal", "aut"), style="maximal_autdiagram")
+
 def show_type(ab, nil, solv, smith, nilcls, dlen, clen):
     # arguments - ["abelian", "nilpotent", "solvable", "smith_abelian_invariants", "nilpotency_class", "derived_length", "composition_length"]
     if ab:
@@ -2023,11 +2033,11 @@ def diagram_js(gp, layers, display_opts, aut=False, normal=False):
     return [ll, layers[1]], order_lookup
 
 def diagram_js_string(gp, only=None):
-    glist = [[], [], [], []]
-    order_lookup = [[], [], [], []]
+    glist = [[], [], [], [], [], []]
+    order_lookup = [[], [], [], [], [], []]
     display_opts = defaultdict(int)
     limit = (100 if only is None else 0)
-    for i, pair in enumerate([("subgroup", ""), ("subgroup", "aut"), ("normal", ""), ("normal", "aut")]):
+    for i, pair in enumerate([("subgroup", ""), ("subgroup", "aut"), ("normal", ""), ("normal", "aut"), ("maximal", ""), ("maximal", "aut")]):
         sub_all, sub_aut = pair
         if (only is None or only == pair) and gp.diagram_count(sub_all, sub_aut, limit=limit):
             glist[i], order_lookup[i] = diagram_js(gp, gp.subgroup_lattice(sub_all, sub_aut), display_opts, aut=bool(sub_aut), normal=(sub_all == "normal"))
