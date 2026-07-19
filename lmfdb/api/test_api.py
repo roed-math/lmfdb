@@ -1,3 +1,5 @@
+import re
+
 from lmfdb.tests import LmfdbTest
 
 class ApiTest(LmfdbTest):
@@ -74,3 +76,34 @@ class ApiTest(LmfdbTest):
             if '11a1' in query:
                 assert '"lmfdb_label": "11.a2"' in data
                 assert '"jinv": [\n        -122023936,\n        161051\n      ]' in data
+
+    def test_api_schema_display(self):
+        r"""
+        Check the schema display on table pages: an Example column filled
+        from a random row, and the table description no longer in the title
+        """
+        for tbl in ['mf_hecke_traces', 'nf_fields']:  # one small, one big table
+            data = self.tc.get("/api/{}".format(tbl), follow_redirects=True).get_data(as_text=True)
+            assert "<th>Example</th>" in data
+            assert 'class="schema-example"' in data
+            assert 'class="schema-holder {}-schema-holder"'.format(tbl) in data
+            # the table description is displayed as a knowl, not in the title
+            assert "<title>Database - {} (".format(tbl) not in data
+        # The random row must be sampled with a projection that includes the
+        # search columns, otherwise the Example cells for search columns render
+        # blank.  degree is a search column of nf_fields that is never null, so
+        # its Example cell must carry an actual value, not an empty string.
+        data = self.tc.get("/api/nf_fields", follow_redirects=True).get_data(as_text=True)
+        m = re.search(r'columns\.nf_fields\.degree\b.*?'
+                      r'<td class="schema-example">(.*?)</td>', data, re.S)
+        assert m is not None, "degree row not found in nf_fields schema table"
+        assert m.group(1).strip() != "", "Example cell for search column 'degree' is blank"
+
+    def test_api_schema_on_datapage(self):
+        r"""
+        Check that the schema display on underlying data pages still works
+        (with no Example column there)
+        """
+        data = self.tc.get("/EllipticCurve/Q/data/11.a1", follow_redirects=True).get_data(as_text=True)
+        assert 'class="schema-holder ec_curvedata-schema-holder"' in data
+        assert "<th>Example</th>" not in data
