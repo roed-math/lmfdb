@@ -23,6 +23,36 @@ class LocalFieldTest(LmfdbTest):
         L = self.tc.get('/padicField/?p=2&topslope=7/2')
         assert '2.1.4.9a1.1' in L.get_data(as_text=True) # number of matches
 
+    def test_stats_pages(self):
+        # The browse page and statistics page link to dynamic statistics
+        L = self.tc.get('/padicField/')
+        assert 'dynamic_stats' in L.get_data(as_text=True)
+        L = self.tc.get('/padicField/stats')
+        dat = L.get_data(as_text=True)
+        assert 'create your own' in dat and 'dynamic_stats' in dat
+
+    def test_dynamic_stats(self):
+        # A combination whose statistics are precomputed: degree x ramification index for p=2
+        # (there are 6 totally ramified quadratic extensions of Q_2)
+        L = self.tc.get('/padicField/dynamic_stats?p=2&col1=n&totals1=yes&col2=e&proportions=rows&search_type=DynStats')
+        dat = L.get_data(as_text=True)
+        assert 'n=2&amp;e=2' in dat and '>6<' in dat
+        # Galois groups for p=2, n=4 (also precomputed); 12 of the 59 quartic
+        # 2-adic fields are cyclic
+        L = self.tc.get('/padicField/dynamic_stats?p=2&n=4&col1=galois_label&proportions=none&search_type=DynStats')
+        dat = L.get_data(as_text=True)
+        assert 'C_4' in dat and '>12<' in dat
+        # All column options render (values for most combinations are computed and
+        # cached on demand, so against a read-only database the tables may be empty,
+        # but the pages should not error)
+        for col in ['p', 'n', 'e', 'f', 'c', 'galois_label', 'aut', 'u', 't', 'top_slope',
+                    'slopes', 'visible', 'hidden', 'ind_of_insep', 'associated_inertia', 'jump_set']:
+            L = self.tc.get('/padicField/dynamic_stats?col1=%s&proportions=recurse&search_type=DynStats' % col)
+            assert L.status_code == 200
+            other = 'p' if col == 'n' else 'n'
+            L = self.tc.get('/padicField/dynamic_stats?col1=%s&col2=%s&totals1=yes&totals2=yes&proportions=rows&search_type=DynStats' % (col, other))
+            assert L.status_code == 200
+
     def test_field_page(self):
         L = self.tc.get('/padicField/11.6.4.2', follow_redirects=True)
         assert '11.2.3.4a1.1' in L.get_data(as_text=True)

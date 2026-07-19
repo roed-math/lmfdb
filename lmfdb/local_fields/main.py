@@ -22,6 +22,7 @@ from lmfdb.utils import (
     EmbeddedSearchArray, integer_options,
     redirect_no_cache, raw_typeset)
 from lmfdb.utils.place_code import CodeSnippet
+from psycodict.utils import range_formatter
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol, ProcessedCol, MultiProcessedCol, RationalListCol, PolynomialCol, eval_rational_list
 from lmfdb.utils.search_parsing import search_parser
@@ -1883,7 +1884,9 @@ def ramdisp(p):
             'proportioner': proportioners.per_row_total}
 
 def discdisp(p):
+    # c has default buckets for dynamic stats, but here we display each value separately
     return {'cols': ['n', 'c'],
+            'buckets': {},
             'constraint': {'p': p, 'n': {'$lte': 23}},
             'top_title':[('degree', 'lf.degree'),
                          ('and', None),
@@ -1905,25 +1908,167 @@ def galdisp(p, n):
 def galcache():
     return knowl_cache(db.lf_fields.distinct("galois_label"))
 def galformatter(gal):
+    if gal is None:
+        return "not computed"
     n, t = galdata(gal)
     return '<span class="nowrap">' + group_pretty_and_nTj(n, t, True, cache=galcache()).replace("(as", '</span><br><span class="nowrap">(as') + "</span>"
+
+def galsortkey(gal):
+    # galdata cannot handle None, which arises for fields where the Galois group is not computed
+    if gal is None:
+        return [-1, -1]
+    return galdata(gal)
+
+def galquery(gal):
+    if gal is None:
+        # There is no way to search for fields where the Galois group is not computed
+        return "gal="
+    return "gal=%s" % galunformatter(gal)
+
+CONTENT_RE = re.compile(r"\[([0-9/, ]*)\](?:_\{(\d+)\})?(?:\^\{(\d+)\})?")
+
+def content_sort_key(s):
+    # A sort key for slope contents: strings such as '[4/3, 4/3, 2]' or '[2, 2]_{2}^{3}',
+    # as stored in the slopes, visible and hidden columns.  None (not computed) sorts
+    # first, and unparseable values (such as user-entered buckets) sort last by raw string.
+    if s is None:
+        return (0, [], 0, 0)
+    m = CONTENT_RE.fullmatch(s)
+    if m is None:
+        return (2, s)
+    body, t, u = m.groups()
+    slopes = [QQ(x.strip()) for x in body.split(",")] if body.strip() else []
+    return (1, slopes, int(t or 0), int(u or 0))
+
+def array_sort_key(v):
+    # Lists cannot be compared with the -infinity used for None by the default sort key
+    if v is None:
+        return (0, [])
+    return (1, v)
+
+def topslope_formatter(ts):
+    # top_slope is stored as a fixed-width decimal approximation (making database
+    # sorting work) followed by the exact rational; see ratproc above
+    if isinstance(ts, str):
+        try:
+            return "$%s$" % latex(QQ(ts[12:]))
+        except (TypeError, ValueError):
+            return ts
+    return range_formatter(ts)
+
+def topslope_query(ts):
+    def dec(x):
+        # Strip the decimal prefix, leaving the exact rational
+        return x[12:] if isinstance(x, str) else x
+    if isinstance(ts, dict):
+        lower = ts.get("$gte", ts.get("$gt"))
+        upper = ts.get("$lte", ts.get("$lt"))
+        if lower is None and upper is None:
+            return "topslope="
+        elif lower is None:
+            # top slopes are always nonnegative
+            return "topslope=0-%s" % dec(upper)
+        elif upper is None:
+            return "topslope=%s-" % dec(lower)
+        return "topslope=%s-%s" % (dec(lower), dec(upper))
+    return "topslope=%s" % dec(ts)
+
+def content_query(shortname, quantifier):
+    # For columns searched via parse_newton_polygon; the quantifier makes the search
+    # match the exact value being counted, rather than the default containment search
+    def inner(val):
+        if val is None or str(val) in ("", "[]"):
+            # There is no way to search for an empty or uncomputed list of slopes
+            return "%s=" % shortname
+        return "%s=%s&%s=exactly" % (shortname, val, quantifier)
+    return inner
+
+def bracket_query(shortname):
+    # For columns searched via parse_bracketed_posints, which matches exactly
+    def inner(val):
+        if val is None:
+            return "%s=" % shortname
+        return "%s=%s" % (shortname, val)
+    return inner
+
+def nullable_int_query(shortname):
+    def inner(val):
+        if val is None:
+            # There is no way to search for fields where this is not computed
+            return "%s=" % shortname
+        return "%s=%s" % (shortname, range_formatter(val))
+    return inner
+
 class LFStats(StatsDisplay):
     table = db.lf_fields
     baseurl_func = ".index"
     short_display = {'galois_label': 'Galois group',
                      'n': 'degree',
+                     'p': 'residue characteristic',
                      'e': 'ramification index',
+                     'f': 'residue field degree',
                      'c': 'discriminant exponent',
-                     'hidden': 'hidden slopes'}
-    sort_keys = {'galois_label': galdata}
+                     'u': 'Galois unramified degree',
+                     't': 'Galois tame degree',
+                     'aut': 'automorphisms',
+                     'top_slope': 'top Artin slope',
+                     'slopes': 'Galois Artin slopes',
+                     'visible': 'visible Artin slopes',
+                     'hidden': 'hidden slopes',
+                     'ind_of_insep': 'indices of inseparability',
+                     'associated_inertia': 'associated inertia',
+                     'jump_set': 'jump set'}
+    top_titles = {'aut': 'number of automorphisms',
+                  'e': 'ramification indices',
+                  'ind_of_insep': 'indices of inseparability',
+                  'associated_inertia': 'associated inertia'}
+    knowls = {'galois_label': 'nf.galois_group',
+              'n': 'lf.degree',
+              'p': 'lf.residue_field',
+              'e': 'lf.ramification_index',
+              'f': 'lf.residue_field_degree',
+              'c': 'lf.discriminant_exponent',
+              'u': 'lf.unramified_degree',
+              't': 'lf.tame_degree',
+              'aut': 'lf.automorphism_group',
+              'top_slope': 'lf.top_slope',
+              'slopes': 'lf.hidden_slopes',
+              'visible': 'lf.slopes',
+              'hidden': 'lf.slopes',
+              'ind_of_insep': 'lf.indices_of_inseparability',
+              'associated_inertia': 'lf.associated_inertia',
+              'jump_set': 'lf.jump_set'}
+    sort_keys = {'galois_label': galsortkey,
+                 'slopes': content_sort_key,
+                 'visible': content_sort_key,
+                 'hidden': content_sort_key,
+                 'ind_of_insep': array_sort_key,
+                 'associated_inertia': array_sort_key,
+                 'jump_set': array_sort_key}
     formatters = {
         'galois_label': galformatter,
+        'slopes': latex_content,
+        'visible': latex_content,
         'hidden': latex_content,
+        'top_slope': topslope_formatter,
+        'ind_of_insep': formatbracketcol,
+        'associated_inertia': formatbracketcol,
+        'jump_set': (lambda js: f"${js}$" if js else "undefined"),
     }
     query_formatters = {
-        'galois_label': (lambda gal: r'gal=%s' % (galunformatter(gal))),
-        'hidden': (lambda hid: r'hidden=%s' % (content_unformatter(hid))),
+        'galois_label': galquery,
+        'slopes': content_query('slopes', 'slopes_quantifier'),
+        'visible': content_query('visible', 'visible_quantifier'),
+        'hidden': (lambda hid: r'hidden=%s' % (content_unformatter(hid) if hid else "")),
+        'top_slope': topslope_query,
+        'u': nullable_int_query('u'),
+        't': nullable_int_query('t'),
+        'ind_of_insep': content_query('ind_of_insep', 'insep_quantifier'),
+        'associated_inertia': bracket_query('associated_inertia'),
+        'jump_set': bracket_query('jump_set'),
     }
+    buckets = {'p': ['2', '3', '5', '7', '11-19', '23-97', '101-199'],
+               'c': ['0', '1', '2', '3', '4', '5-8', '9-16', '17-32', '33-79']}
 
     stat_list = [
         ramdisp(2),
@@ -1965,26 +2110,30 @@ class LFStats(StatsDisplay):
         common_parse(info, query)
 
     dynamic_parent_page = "padic-refine-search.html"
-    dynamic_cols = ["galois_label", "slopes"]
+    dynamic_cols = ["p", "n", "e", "f", "c", "galois_label", "aut", "u", "t",
+                    "top_slope", "slopes", "visible", "hidden",
+                    "ind_of_insep", "associated_inertia", "jump_set"]
 
     @property
     def short_summary(self):
-        return 'The database currently contains %s %s, %s absolute %s, and %s relative families.  Here are some <a href="%s">further statistics</a>.' % (
+        return 'The database currently contains %s %s, %s absolute %s, and %s relative families.  Here are some <a href="%s">further statistics</a>, or you can <a href="%s">create your own</a>.' % (
             comma(self.numfields),
             display_knowl("lf.padic_field", r"$p$-adic fields"),
             comma(self.num_abs_families),
             display_knowl("lf.family_polynomial", "families"),
             comma(self.num_rel_families),
             url_for(".statistics"),
+            url_for(".dynamic_statistics"),
         )
 
     @property
     def summary(self):
-        return r'The database currently contains %s %s, including all with $p < 200$ and %s $n < 24$.  It also contains all %s absolute %s with $p < 200$ and degree $n < 48$, as well as all %s relative families with $p < 200$, base degree $n_0 < 16$ and absolute degree $n_{\mathrm{absolute}} < 48$.' % (
+        return r'The database currently contains %s %s, including all with $p < 200$ and %s $n < 24$.  It also contains all %s absolute %s with $p < 200$ and degree $n < 48$, as well as all %s relative families with $p < 200$, base degree $n_0 < 16$ and absolute degree $n_{\mathrm{absolute}} < 48$.  In addition to the statistics below, you can also <a href="%s">create your own</a>.' % (
             comma(self.numfields),
             display_knowl("lf.padic_field", r"$p$-adic fields"),
             display_knowl("lf.degree", "degree"),
             comma(self.num_abs_families),
             display_knowl("lf.family_polynomial", "families"),
             comma(self.num_rel_families),
+            url_for(".dynamic_statistics"),
         )
