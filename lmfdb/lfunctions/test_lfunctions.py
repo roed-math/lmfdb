@@ -29,6 +29,59 @@ class LfunctionTest(LmfdbTest):
         # bogus a_101 (unknown Euler factor would default to 1), the download stops at a_100.
         assert len(an) == 100
 
+    #------------------------------------------------------
+    # Euler factors of motivic weight 1 L-functions linked to
+    # isogeny classes of abelian varieties over finite fields
+    #------------------------------------------------------
+
+    def test_euler_factor_isogeny_class_links(self):
+        # Elliptic curve 11.a has a_2 = -2, so F_2(T) = 1 + 2T + 2T^2 and the
+        # reduction mod 2 is the isogeny class 1.2.c (with 5 points); similarly
+        # a_5 = 1 gives F_5(T) = 1 - T + 5T^2 and the class 1.5.ab.
+        L = self.tc.get('/L/2/11/1.1/c1/0/0', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert 'Isogeny Class over' in page
+        assert '/Variety/Abelian/Fq/1/2/c' in page
+        assert '/Variety/Abelian/Fq/1/5/ab' in page
+        # no link at the bad prime 11
+        assert '/Variety/Abelian/Fq/1/11/' not in page
+
+        # Genus 2 curve 169.a has F_2(T) = 1 + 3T + 5T^2 + 6T^3 + 4T^4, whose
+        # reversal is the Weil polynomial of the isogeny class 2.2.d_f (the
+        # reduction of the Jacobian mod 2, with 19 points on the surface).
+        L = self.tc.get('/L/4/13e2/1.1/c1e2/0/0', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert '/Variety/Abelian/Fq/2/2/d_f' in page
+        assert '/Variety/Abelian/Fq/2/5/a_ah' in page
+
+    def test_euler_factor_isogeny_class_out_of_range(self):
+        # Dimension 3 abelian varieties are only in the database for q <= 25,
+        # so at p = 29 the label is displayed without a link.
+        L = self.tc.get('/L/6/9072e3/1.1/c1e3/0/7', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert '/Variety/Abelian/Fq/3/5/a_a_ac' in page
+        assert '3.29.ag_bq_adi' in page
+        assert '/Variety/Abelian/Fq/3/29/' not in page
+
+    def test_Lfactor_to_gq(self):
+        from lmfdb.lfunctions.Lfunctionutilities import Lfactor_to_gq
+        # Euler factor of 11.a at 2
+        assert Lfactor_to_gq([1, 2, 2], 2) == (1, 2)
+        # correct shape but wrong prime
+        assert Lfactor_to_gq([1, 2, 2], 3) is None
+        # negative leading coefficient: not a Weil polynomial
+        assert Lfactor_to_gq([1, 0, -2], 2) is None
+        # not self-dual
+        assert Lfactor_to_gq([1, 1, 1, 3, 9], 3) == (2, 3)
+        assert Lfactor_to_gq([1, 1, 1, 4, 9], 3) is None
+        # leading coefficient not a perfect power (used to raise ValueError)
+        assert Lfactor_to_gq([1, 0, 0, 0, 8], 2) is None
+        # odd degree and constant polynomials
+        assert Lfactor_to_gq([1, 1], 2) is None
+        assert Lfactor_to_gq([1], 2) is None
+        # factored form, as for L.localfactors_factored_dict
+        assert Lfactor_to_gq([[[1, 2, 2], 1]], 2) == (1, 2)
+
     def test_LDirichlet(self):
         L = self.tc.get('/L/Character/Dirichlet/19/9/', follow_redirects=True)
         assert '0.4813597783' in L.get_data(as_text=True)
