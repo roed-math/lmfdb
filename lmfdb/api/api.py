@@ -369,7 +369,10 @@ def api_query(table, id=None):
         # The table description (the tables.<name> knowl) is displayed by
         # collection.html rather than being appended to the title
         try:
-            example = coll.random(projection=2)
+            # projection=3 selects every search and extra column (plus id),
+            # the same full mask the datapage query below uses, so the Example
+            # column can be populated for every row shown in the schema table.
+            example = coll.random(projection=3)
         except Exception:
             example = None
         if example is None:
