@@ -26,3 +26,21 @@ new groups/subgroups are added; see https://github.com/LMFDB/lmfdb/issues/7028):
  - run load-new-imgs.py from this directory: it writes "imageadder" with only
    the genuinely new rows and appends them with db.gps_images.copy_from,
    instead of rewriting the whole table
+
+Macro consistency (images/eq.tex vs the website's KaTeX macros):
+
+ - group tex names are rendered both by KaTeX on the website (macro list in
+   lmfdb/templates/base.html) and by latex here (preamble in images/eq.tex).
+   Every group-name macro in base.html must also be defined in eq.tex,
+   otherwise dump-missing-group-names.py would misclassify names using it as
+   broken and silently skip them (they keep showing up as '?' in diagrams).
+
+ - macro_check.py compares the two macro sets (names only; a few bodies
+   differ on purpose, matching the images already in gps_images) and knows
+   the short list of base.html macros that are deliberately image-irrelevant
+   (\Aut, \Gal, number sets, ...).  It runs automatically at the start of
+   dump-missing-group-names.py and can be run standalone:
+   sage -python macro_check.py
+
+ - when adding a group-name macro to base.html, add it to images/eq.tex in
+   the same change; macro_check.py will refuse to dump until you do.

@@ -28,6 +28,18 @@ import sys
 import os
 import re
 from collections import Counter
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import macro_check
+
+# Preflight (before connecting or querying): images/eq.tex must define every
+# group-name macro in the site-wide KaTeX list, else names the website can
+# render would be misclassified as broken and silently skipped below.
+problems = macro_check.check()
+if problems:
+    sys.exit("images/eq.tex is out of sync with the KaTeX macros in "
+             "lmfdb/templates/base.html:\n"
+             + "\n".join("* " + p for p in problems))
+
 HOME = os.path.expanduser("~")
 sys.path.append(os.path.join(HOME, 'lmfdb'))
 from lmfdb import db
@@ -47,15 +59,13 @@ missing.sort(key=lambda name: (-refcounts[name], name))
 print("%d referenced tex names, %d missing from gps_images (%d references)"
       % (len(refcounts), len(missing), sum(refcounts[name] for name in missing)))
 
-# Skip names using macros that latex cannot expand (broken tex names; the
-# website's KaTeX macro list in lmfdb/templates/base.html cannot render these
-# either, so they need fixing upstream rather than an image).  One bad formula
-# would otherwise derail the whole latex run.
-defined = set(re.findall(r"\\newcommand\{\\(\w+)\}",
-                         open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "eq.tex")).read()))
-standard = set("""times rtimes ltimes wr Gamma Sigma Omega Delta Lambda Phi Psi Pi Theta Xi Upsilon
-alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi pi rho sigma tau upsilon
-phi chi psi omega mathrm mathbb mathfrak mathcal textrm rm cdot ast circ""".split())
+# Skip names using macros that latex cannot expand (broken tex names; thanks
+# to the preflight above, these are exactly the names the website's KaTeX
+# macro list in lmfdb/templates/base.html cannot render either, so they need
+# fixing upstream rather than an image).  One bad formula would otherwise
+# derail the whole latex run.
+defined = macro_check.eqtex_macros()
+standard = macro_check.STANDARD_MACROS
 skipped = [name for name in missing
            if any(m not in defined and m not in standard for m in re.findall(r"\\([A-Za-z]+)", name))]
 if skipped:
