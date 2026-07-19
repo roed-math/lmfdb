@@ -15,7 +15,8 @@ EXAMPLES::
 from collections import defaultdict
 from sage.all import (
     factor, prod, factorial, is_prime, prime_range, ZZ, NN, RR,
-    ceil, floor, RealSet, infinity, cached_function, RLF, log, sqrt)
+    ceil, floor, RealSet, infinity, cached_function, RLF, log, sqrt,
+    gcd, lcm, crt)
 
 # This dictionary is filled in the __init__ method of CompletenessCheckers based on the table name;
 # specific CompletenessCheckers are created at the bottom of this file.
@@ -113,6 +114,288 @@ def skip(a, b, L):
 # These objects add additional functionality on top of Sage's RealSet
 # can can be created from a query dictionary
 
+# Bound on the size of the residue computations we are willing to do in the Congruence class;
+# beyond this we fall back on safe over-approximations.
+CONGRUENCE_CAP = 10000
+
+
+class Congruence:
+    """
+    A congruence constraint on integers, given by a modulus ``m`` and a set of allowed
+    residues modulo ``m``: an integer ``n`` satisfies the constraint when ``n % m`` lies
+    in ``residues``.
+
+    We use Python's conventions for ``%`` (nonnegative for positive modulus), which
+    matches the SQL that psycodict generates for ``{"$mod": [r, m]}`` queries.
+
+    The trivial congruence (modulus 1, residues {0}) imposes no constraint, while an
+    empty residue set excludes all integers.  Instances are canonicalized on creation:
+    the modulus is reduced to the minimal period of the residue set (when cheap to
+    compute), so that for example ``Congruence(6, [0, 2, 4])`` equals ``Congruence(2, [0])``.
+
+    EXAMPLES::
+
+        sage: from lmfdb.utils.completeness import Congruence
+        sage: C = Congruence(7, [0]); 14 in C, 15 in C, -7 in C
+        (True, False, True)
+        sage: Congruence(4, [1]).intersection(Congruence(6, [3]))
+        (Congruence(12, [9]), True)
+        sage: Congruence(4, [0]).refines(Congruence(2, [0]))
+        True
+    """
+    def __init__(self, modulus=1, residues=(0,)):
+        modulus = ZZ(modulus)
+        if modulus < 1:
+            raise ValueError("modulus must be positive")
+        residues = frozenset(ZZ(r) % modulus for r in residues)
+        if not residues:
+            modulus = ZZ(1)
+        elif len(residues) == modulus:
+            modulus, residues = ZZ(1), frozenset([ZZ(0)])
+        elif 1 < modulus <= CONGRUENCE_CAP:
+            # Reduce to the minimal period (divisors() is cheap for small modulus)
+            for d in modulus.divisors():
+                if d < modulus:
+                    rd = frozenset(r % d for r in residues)
+                    # residues is a union of classes mod d exactly when the sizes match
+                    if len(rd) * (modulus // d) == len(residues):
+                        modulus, residues = d, rd
+                        break
+        self.modulus = modulus
+        self.residues = residues
+
+    def __repr__(self):
+        return f"Congruence({self.modulus}, {sorted(self.residues)})"
+
+    def __eq__(self, other):
+        return isinstance(other, Congruence) and self.modulus == other.modulus and self.residues == other.residues
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __hash__(self):
+        return hash((self.modulus, self.residues))
+
+    def __contains__(self, n):
+        return n % self.modulus in self.residues
+
+    def is_trivial(self):
+        return self.modulus == 1 and bool(self.residues)
+
+    def is_empty(self):
+        return not self.residues
+
+    def intersection(self, other):
+        """
+        Returns a pair (C, exact), where C is a Congruence containing the intersection,
+        and exact indicates whether it is equal to the intersection.
+        """
+        if self.is_trivial() or other.is_empty():
+            return other, True
+        if other.is_trivial() or self.is_empty():
+            return self, True
+        m1, m2 = self.modulus, other.modulus
+        if len(self.residues) * len(other.residues) > CONGRUENCE_CAP:
+            # Too expensive; either input is a valid over-approximation
+            return (self if m1 >= m2 else other), False
+        g, L = gcd(m1, m2), lcm(m1, m2)
+        res = {crt(a, b, m1, m2) % L for a in self.residues for b in other.residues if (a - b) % g == 0}
+        return Congruence(L, res), True
+
+    def union(self, other):
+        """
+        Returns a pair (C, exact), where C is a Congruence containing the union,
+        and exact indicates whether it is equal to the union.
+        """
+        if self.is_empty() or other.is_trivial():
+            return other, True
+        if other.is_empty() or self.is_trivial():
+            return self, True
+        m1, m2 = self.modulus, other.modulus
+        L = lcm(m1, m2)
+        if len(self.residues) * (L // m1) + len(other.residues) * (L // m2) > CONGRUENCE_CAP:
+            return Congruence(), False
+        res = {a + k * m1 for a in self.residues for k in range(L // m1)}
+        res.update(b + k * m2 for b in other.residues for k in range(L // m2))
+        return Congruence(L, res), True
+
+    def complement(self):
+        """
+        The complementary congruence, or None if it is too expensive to represent.
+        """
+        if self.is_empty():
+            return Congruence()
+        if self.modulus > CONGRUENCE_CAP:
+            return None
+        return Congruence(self.modulus, set(range(self.modulus)) - self.residues)
+
+    def refines(self, other):
+        """
+        Whether every integer satisfying this congruence also satisfies the other.
+        May return False (which is safe for completeness checks) if the answer is
+        too expensive to determine.
+        """
+        if other.is_trivial() or self.is_empty():
+            return True
+        if self.is_trivial():
+            # other is nontrivial by canonicalization
+            return False
+        m1, m2 = self.modulus, other.modulus
+        L = lcm(m1, m2)
+        if len(self.residues) * (L // m1) > CONGRUENCE_CAP:
+            return False
+        return all((a + k * m1) % m2 in other.residues for a in self.residues for k in range(L // m1))
+
+    def next_element(self, x):
+        """
+        The least integer that is at least ``x`` and satisfies this congruence
+        (which must be nonempty).
+        """
+        x, m = ZZ(x), self.modulus
+        return x + min((r - x) % m for r in self.residues)
+
+    def prev_element(self, x):
+        """
+        The greatest integer that is at most ``x`` and satisfies this congruence
+        (which must be nonempty).
+        """
+        x, m = ZZ(x), self.modulus
+        return x - min((x - r) % m for r in self.residues)
+
+
+def _full_rset():
+    return RealSet.interval(-infinity, infinity, lower_closed=False, upper_closed=False)
+
+
+def _pair_empty(P):
+    rset, cong, exact = P
+    return not rset or cong.is_empty()
+
+
+def _pair_intersection(P1, P2):
+    """
+    Intersection of two (rset, cong, exact) triples; exact when both inputs are.
+    """
+    r1, c1, e1 = P1
+    r2, c2, e2 = P2
+    cong, ce = c1.intersection(c2)
+    return r1.intersection(r2), cong, e1 and e2 and ce
+
+
+def _pair_union(P1, P2):
+    """
+    Union of two (rset, cong, exact) triples.  The result always contains the union of
+    the sets of integers described by the inputs, with the exact flag set when equal.
+    """
+    r1, c1, e1 = P1
+    r2, c2, e2 = P2
+    if _pair_empty(P1):
+        return P2
+    if _pair_empty(P2):
+        return P1
+    if c1 == c2:
+        return r1.union(r2), c1, e1 and e2
+    if c1.is_trivial() and r2.is_subset(r1):
+        return P1
+    if c2.is_trivial() and r1.is_subset(r2):
+        return P2
+    cong, ce = c1.union(c2)
+    if r1 == r2:
+        return r1, cong, e1 and e2 and ce
+    return r1.union(r2), cong, False
+
+
+def _pair_complement(P):
+    """
+    Complement of an (rset, cong, exact) triple.  When the complement is not exactly
+    representable, we return the whole real line (a safe over-approximation: completeness
+    checks must never under-approximate the set of values matching a query).
+    """
+    rset, cong, exact = P
+    if not exact:
+        return _full_rset(), Congruence(), False
+    if _pair_empty(P):
+        return _full_rset(), Congruence(), True
+    if cong.is_trivial():
+        return rset.complement(), Congruence(), True
+    if rset == _full_rset():
+        cc = cong.complement()
+        if cc is None:
+            return _full_rset(), Congruence(), False
+        return _full_rset(), cc, True
+    return _full_rset(), Congruence(), False
+
+
+def to_rset_cong(query):
+    """
+    Create a triple ``(rset, cong, exact)`` from various inputs, where ``rset`` is a Sage
+    RealSet, ``cong`` is a Congruence and ``exact`` is a boolean.
+
+    The set of integer points of ``rset`` satisfying ``cong`` always contains the set of
+    integers satisfying the constraints in ``query``, with equality when ``exact`` is True.
+
+    Valid inputs:
+
+    * None (the whole real line)
+    * a RealSet or NumberSet
+    * a pair (list gives closed interval, tuple open interval)
+    * a set (the set of points)
+    * a single value (the corresponding point)
+    * a query dictionary (the set described by the constraints)
+    """
+    triv = Congruence()
+    if query is None:
+        return _full_rset(), triv, True
+    if isinstance(query, RealSet):
+        return query, triv, True
+    if isinstance(query, NumberSet):
+        return query.rset, getattr(query, "cong", triv), query.exact
+    if isinstance(query, (list, tuple)) and len(query) == 2:  # closed and open intervals
+        return RealSet(query), triv, True
+    if isinstance(query, set):
+        return RealSet(*[RealSet.point(x) for x in query]), triv, True
+    if not isinstance(query, dict):
+        return RealSet.point(query), triv, True
+    ans = (_full_rset(), triv, True)
+    for k, val in query.items():
+        if k == "$or":
+            cur = (RealSet(), Congruence(1, ()), True)
+            for D in val:
+                cur = _pair_union(cur, to_rset_cong(D))
+        elif k == "$and":
+            cur = (_full_rset(), triv, True)
+            for D in val:
+                cur = _pair_intersection(cur, to_rset_cong(D))
+        elif k in ["$not", "$ne"]:
+            cur = _pair_complement(to_rset_cong(val))
+        elif k == "$lte":
+            cur = (RealSet.unbounded_below_closed(val), triv, True)
+        elif k == "$lt":
+            cur = (RealSet.unbounded_below_open(val), triv, True)
+        elif k == "$gte":
+            cur = (RealSet.unbounded_above_closed(val), triv, True)
+        elif k == "$gt":
+            cur = (RealSet.unbounded_above_open(val), triv, True)
+        elif k == "$in":
+            cur = (RealSet(*[RealSet.point(x) for x in val]), triv, True)
+        elif k == "$nin":
+            cur = (RealSet(*[RealSet.point(x) for x in val]).complement(), triv, True)
+        elif k == "$mod":
+            if not (isinstance(val, (list, tuple)) and len(val) == 2):
+                raise ValueError(f"Invalid $mod value {val}")
+            r, m = val
+            m = ZZ(m).abs()
+            if m == 0:
+                # n = r (mod 0) just means n = r
+                cur = (RealSet.point(r), triv, True)
+            else:
+                cur = (_full_rset(), Congruence(m, [r]), True)
+        else:
+            raise ValueError(f"Unsupported key {k}")
+        ans = _pair_intersection(ans, cur)
+    return ans
+
+
 def to_rset(query):
     """
     Create a Sage RealSet from various inputs
@@ -125,42 +408,12 @@ def to_rset(query):
     * a set (the set of points)
     * a single value (the corresponding point)
     * a query dictionary (the RealSet described by the constraints)
+
+    Congruence conditions (as in ``{"$mod": [r, m]}``) cannot be described by a RealSet,
+    so the result may be a proper superset of the queried set; use ``IntegerSet`` or
+    ``to_rset_cong`` for congruence-aware sets.
     """
-    if query is None:
-        return RealSet.interval(-infinity, infinity, lower_closed=False, upper_closed=False)
-    if isinstance(query, RealSet):
-        return query
-    if isinstance(query, NumberSet):
-        return query.rset
-    if isinstance(query, (list, tuple)) and len(query) == 2:  # closed and open intervals
-        return RealSet(query)
-    if isinstance(query, set):
-        return RealSet(*[RealSet.point(x) for x in query])
-    if not isinstance(query, dict):
-        return RealSet.point(query)
-    ans = RealSet((-infinity, infinity))
-    for k, val in query.items():
-        if k == "$or":
-            ans = ans.intersection(RealSet(*[to_rset(D) for D in val]))
-        elif k == "$and":
-            ans = ans.intersection(to_rset(D) for D in val)
-        elif k in ["$not", "$ne"]:
-            ans = ans.intersection(to_rset(val).complement())
-        elif k == "$lte":
-            ans = ans.intersection(RealSet.unbounded_below_closed(val))
-        elif k == "$lt":
-            ans = ans.intersection(RealSet.unbounded_below_open(val))
-        elif k == "$gte":
-            ans = ans.intersection(RealSet.unbounded_above_closed(val))
-        elif k == "$gt":
-            ans = ans.intersection(RealSet.unbounded_above_open(val))
-        elif k == "$in":
-            ans = ans.intersection(RealSet(*[RealSet.point(x) for x in val]))
-        elif k == "$nin":
-            ans = ans.intersection(RealSet(*[RealSet.point(x) for x in val]).complement())
-        else:
-            raise ValueError(f"Unsupported key {k}")
-    return ans
+    return to_rset_cong(query)[0]
 
 
 def interval_sum(I, J):
@@ -259,14 +512,55 @@ def interval_abs(I):
     return RealSet(Rpos.intersection(I), interval_neg(Rneg.intersection(I)))
 
 
+def _arith_exact(*sets):
+    """
+    Whether an operation that only looks at real sets can produce an exact result for
+    these inputs: each must be exactly represented, with a trivial congruence
+    (congruence constraints are dropped by such operations).
+    """
+    return all(S.exact and (not isinstance(S, IntegerSet) or S.cong.is_trivial()) for S in sets)
+
+
+def _prod_exact(*sets):
+    """
+    Whether a product, quotient or inverse of these sets is exact: in addition to the
+    requirements of ``_arith_exact``, any integer operand must be a finite set of
+    points, since products of integer intervals over-approximate (for example
+    ``[2,4] * [2,4] = [4,16]`` contains 5, which is not a product).
+    """
+    return _arith_exact(*sets) and all(
+        not isinstance(S, IntegerSet) or all(I.lower() == I.upper() for I in S.rset)
+        for S in sets)
+
+
+def _set_exact(ans, exact):
+    """
+    Set the ``exact`` flag on ``ans``, upgrading to True when the representation is
+    empty (an empty over-approximation forces the set it describes to be empty too).
+    """
+    ans.exact = exact or not ans.rset
+    return ans
+
+
 class NumberSet:
     """
     A set of real numbers, as specified either as a number or a query dictionary.
 
     Supports arithmetic operations, union, intersection and inequalities.  The subclass IntegerSet supports iteration.
+
+    The attribute ``exact`` records whether ``rset`` describes the input exactly:
+    ``rset`` always contains the set described by the input, with equality when
+    ``exact`` is True.  Inexact sets are safe over-approximations; operations
+    propagate the flag conservatively, and completeness certifications
+    (``is_subset``, ``difference``) never rely on a set that is not known exactly
+    on the side where over-approximation would be unsound.
     """
     def __init__(self, x):
-        self.rset = to_rset(x)
+        rset, cong, exact = to_rset_cong(x)
+        self.rset = rset
+        # A NumberSet only records the real set, so a nontrivial congruence constraint
+        # makes it inexact; an empty set is always exact
+        self.exact = (exact and cong.is_trivial()) or not rset
 
     def __repr__(self):
         return repr(self.rset)
@@ -274,21 +568,28 @@ class NumberSet:
     def __bool__(self):
         return bool(self.rset)
 
+    def __contains__(self, x):
+        return x in self.rset
+
     def __add__(self, other):
-        return self.__class__(RealSet(*[interval_sum(I, J) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_sum(I, J) for I in self.rset for J in other.rset])),
+                          _arith_exact(self, other))
 
     def __neg__(self):
-        return self.__class__(RealSet(*[interval_neg(I) for I in self.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_neg(I) for I in self.rset])),
+                          _arith_exact(self))
 
     def __sub__(self, other):
-        return self.__class__(RealSet(*[interval_sum(I, interval_neg(J)[0]) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_sum(I, interval_neg(J)[0]) for I in self.rset for J in other.rset])),
+                          _arith_exact(self, other))
 
     def __mul__(self, other):
         """
         A set containing all products of elements in this set.  The result will be sharp for real sets,
         but may be proper for integer sets (for example, [2,4] * [2,4] = [4,16] and contains 5,7,10,11,13,14,15)
         """
-        return self.__class__(RealSet(*[interval_mul(I, J) for I in self.rset for J in other.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_mul(I, J) for I in self.rset for J in other.rset])),
+                          _prod_exact(self, other))
 
     def __invert__(self):
         """
@@ -297,7 +598,8 @@ class NumberSet:
 
         We never raise a zero division error, instead implicitly intersecting with the complement of 0
         """
-        return NumberSet(RealSet(*[interval_inv(I) for I in self.rset]))
+        return _set_exact(NumberSet(RealSet(*[interval_inv(I) for I in self.rset])),
+                          _prod_exact(self))
 
     def __truediv__(self, other):
         """
@@ -305,14 +607,16 @@ class NumberSet:
 
         We never raise a zero division error, instead implicitly intersecting other with the complement of 0
         """
-        return NumberSet(
+        return _set_exact(NumberSet(
             RealSet(*[interval_mul(I, interval_inv(J.intersection(Rneg))[0])
                       for I in self.rset for J in other.rset]).union(
             RealSet(*[interval_mul(I, interval_inv(J.intersection(Rpos))[0])
-                      for I in self.rset for J in other.rset])))
+                      for I in self.rset for J in other.rset]))),
+            _prod_exact(self, other))
 
     def __abs__(self):
-        return self.__class__(RealSet(*[interval_abs(I) for I in self.rset]))
+        return _set_exact(self.__class__(RealSet(*[interval_abs(I) for I in self.rset])),
+                          _arith_exact(self))
 
     def pow_cap(self, other, k):
         """
@@ -323,19 +627,40 @@ class NumberSet:
         a = other.rset.sup()
         if a is infinity:
             return self
-        return self.intersection(top(a**k))
+        ans = self.intersection(top(a**k))
+        # The cap is computed from other's representation, so it is only known to be
+        # sharp when other is exact
+        return _set_exact(ans, ans.exact and other.exact)
 
     def union(self, *others):
-        return self.__class__(self.rset.union(*[other.rset for other in others]))
+        return _set_exact(self.__class__(self.rset.union(*[other.rset for other in others])),
+                          _arith_exact(self, *others))
 
     def intersection(self, *others):
-        return self.__class__(self.rset.intersection(*[other.rset for other in others]))
+        return _set_exact(self.__class__(self.rset.intersection(*[other.rset for other in others])),
+                          _arith_exact(self, *others))
 
     def difference(self, *others):
-        return self.__class__(self.rset.difference(*[other.rset for other in others]))
+        """
+        A set containing the elements of this set lying in none of the others.
+
+        Only sets that are known exactly can safely be subtracted (removing an
+        over-approximation could remove elements that belong in the difference), so
+        any inexact arguments are skipped, leaving a larger but still safe result.
+        """
+        keep = [other.rset for other in others if _arith_exact(other)]
+        rset = self.rset.difference(*keep) if keep else self.rset
+        return _set_exact(self.__class__(rset), self.exact and len(keep) == len(others))
 
     def is_subset(self, other):
-        return self.rset.is_subset(other.rset)
+        """
+        Whether this set is certified to be a subset of ``other``.
+
+        A False result only means that containment could not be certified; in
+        particular containment in a set that is not known exactly is never certified,
+        since membership in an over-approximation proves nothing.
+        """
+        return _arith_exact(other) and self.rset.is_subset(other.rset)
 
     def __le__(self, other):
         """
@@ -385,23 +710,35 @@ class NumberSet:
     def restricted(self):
         """
         Not the whole real line
+
+        Note that congruence conditions on an IntegerSet are deliberately not taken into
+        account here: callers use this method to decide whether iterating over the set
+        is worthwhile, and a congruence-only restriction still yields an unbounded set.
         """
         return (len(list(self.rset)), self.rset.inf(), self.rset.sup()) != (1, -infinity, infinity)
 
 
-def integer_normalize(S):
+def integer_normalize(S, cong=None):
     """
     INPUT:
 
     - ``S`` -- a RealSet (normalized in the sense of real sets)
+    - ``cong`` -- a Congruence, or None (no constraint)
 
     Output:
 
-    A RealSet ``T`` so that the set of integer points of S and T are the same, and
+    A RealSet ``T`` so that the sets of integer points of S and T satisfying ``cong``
+    are the same, and
 
         - all intervals of ``T`` have endpoints that are either infinite or integral and closed
-        - successive intervals have an integer in between
+          (and, when ``cong`` is given, finite endpoints satisfy the congruence)
+        - successive intervals have an integer (satisfying the congruence) in between
     """
+    if cong is not None:
+        if cong.is_empty():
+            return RealSet()
+        if cong.is_trivial():
+            cong = None
     T = []
     for I in S:
         if I.lower() is -infinity:
@@ -410,12 +747,16 @@ def integer_normalize(S):
             a, c = ceil(I.lower()), True
             if a == I.lower() and not I.lower_closed():
                 a += 1
+            if cong is not None:
+                a = cong.next_element(a)
         if I.upper() is infinity:
             b, d = infinity, False
         else:
             b, d = floor(I.upper()), True
             if b == I.upper() and not I.upper_closed():
                 b -= 1
+            if cong is not None:
+                b = cong.prev_element(b)
         if a <= b:
             Iint = RealSet.interval(a, b, lower_closed=c, upper_closed=d)[0]
             # InternalRealIntervals are UniqueRepresentation, and 11.0 == 11, so we get annoying floats when doing interval division
@@ -430,7 +771,8 @@ def integer_normalize(S):
     TT = []
     cur = T[0]
     for I in T[1:]:
-        if I.lower() - cur.upper() > 1:
+        # Split when there is an integer (satisfying the congruence) strictly between the intervals
+        if (cong.next_element(cur.upper() + 1) < I.lower()) if cong is not None else (I.lower() - cur.upper() > 1):
             TT.append(cur)
             cur = I
         else:
@@ -445,10 +787,139 @@ one_inf = RealSet.unbounded_above_closed(1)[0]
 
 class IntegerSet(NumberSet):
     """
-    The set of integer points in within a real set
+    The set of integer points within a real set that satisfy a congruence condition
+    (trivial unless the input includes ``$mod`` constraints)
+
+    The attribute ``exact`` records whether this data describes the input exactly:
+    the integer points of ``rset`` satisfying ``cong`` always contain the set
+    described by the input, with equality when ``exact`` is True.  Inexact sets arise
+    for example from unions of branches with different ranges and congruences (which
+    need not be describable by a single range and congruence), and are safe
+    over-approximations: it is always sound to iterate over them, bound them, or use
+    them on the left of ``is_subset``, but ``is_subset`` never certifies containment
+    in an inexact set and ``difference`` never subtracts one.
     """
     def __init__(self, x):
-        self.rset = integer_normalize(to_rset(x))
+        self._set_rset_cong(*to_rset_cong(x))
+
+    def _set_rset_cong(self, rset, cong, exact=True):
+        if cong.is_empty():
+            self.rset, self.cong = RealSet(), Congruence()
+        else:
+            self.rset = integer_normalize(rset, cong)
+            self.cong = Congruence() if not self.rset else cong
+        # An empty over-approximation forces the described set to be empty as well
+        self.exact = exact or not self.rset
+
+    @classmethod
+    def _make(cls, rset, cong, exact=True):
+        """
+        Construct directly from a RealSet, a Congruence and an exactness flag.
+        """
+        ans = cls.__new__(cls)
+        ans._set_rset_cong(rset, cong, exact)
+        return ans
+
+    def __repr__(self):
+        if self.cong.is_trivial():
+            return repr(self.rset)
+        rset = repr(self.rset)
+        if " ∪ " in rset:
+            rset = f"({rset})"
+        res = ",".join(str(r) for r in sorted(self.cong.residues))
+        return f"{rset} ∩ {{n ≡ {res} (mod {self.cong.modulus})}}"
+
+    def __contains__(self, x):
+        """
+        Membership in the representation; when ``exact`` is False, a True answer only
+        means that ``x`` may lie in the described set.
+        """
+        return x in ZZ and x in self.rset and ZZ(x) in self.cong
+
+    def __neg__(self):
+        cong = Congruence(self.cong.modulus, [-r for r in self.cong.residues])
+        return self._make(RealSet(*[interval_neg(I) for I in self.rset]), cong, self.exact)
+
+    def union(self, *others):
+        ans = self
+        for other in others:
+            if not isinstance(other, NumberSet):
+                other = IntegerSet(other)
+            ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
+            if not ans.rset:
+                ans = self._make(other.rset, ocong, other.exact)
+            elif not other.rset:
+                pass
+            elif ans.cong == ocong:
+                ans = self._make(ans.rset.union(other.rset), ans.cong, ans.exact and other.exact)
+            elif ans.cong.is_trivial() and other.rset.is_subset(ans.rset):
+                # other's elements all lie in ans already, so the union is ans itself
+                pass
+            elif ocong.is_trivial() and ans.rset.is_subset(other.rset):
+                ans = self._make(other.rset, ocong, other.exact)
+            else:
+                # The union need not be describable by a single congruence: it is exact
+                # only when the ranges agree and the congruences combine exactly, and
+                # otherwise is a proper superset (a safe over-approximation, recorded
+                # by the exact flag so that it is never later treated as exact)
+                cong, ce = ans.cong.union(ocong)
+                exact = ans.exact and other.exact and ce and ans.rset == other.rset
+                ans = self._make(ans.rset.union(other.rset), cong, exact)
+        return ans
+
+    def intersection(self, *others):
+        rset, cong, exact = self.rset, self.cong, self.exact
+        for other in others:
+            if not isinstance(other, NumberSet):
+                other = IntegerSet(other)
+            exact = exact and other.exact
+            if isinstance(other, IntegerSet):
+                cong, ce = cong.intersection(other.cong)
+                exact = exact and ce
+            rset = rset.intersection(other.rset)
+        return self._make(rset, cong, exact)
+
+    def difference(self, *others):
+        ans = self
+        for other in others:
+            if not isinstance(other, NumberSet):
+                other = IntegerSet(other)
+            ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
+            if other.exact and ans.cong.refines(ocong):
+                # other is known exactly and every element of ans satisfies other's
+                # congruence, so exactly the part of ans within other's real set is
+                # removed
+                ans = self._make(ans.rset.difference(other.rset), ans.cong, ans.exact)
+            elif not ans.rset.intersection(other.rset):
+                # Nothing to remove
+                pass
+            else:
+                # We cannot certify what should be removed: subtracting an
+                # over-approximation could remove elements that belong in the
+                # difference.  Keeping ans unchanged is a safe over-approximation,
+                # but the result is no longer exact.
+                ans = self._make(ans.rset, ans.cong, False)
+        return ans
+
+    def is_subset(self, other):
+        if not self.rset:
+            return True
+        if not other.exact:
+            # other's representation may properly contain the set it describes, so
+            # containment in the representation certifies nothing; note that it is
+            # fine for self to be inexact, since certifying an over-approximation
+            # of self also certifies self
+            return False
+        ocong = other.cong if isinstance(other, IntegerSet) else Congruence()
+        if self.cong.refines(ocong) and self.rset.is_subset(other.rset):
+            return True
+        if self.cong.is_trivial() and ocong.is_trivial():
+            # Subsets of integer-normalized real sets are detected exactly
+            return False
+        # Fall back on enumeration for small sets
+        if self.is_finite() and self.rset.sup() - self.rset.inf() < CONGRUENCE_CAP:
+            return all(n in other for n in self)
+        return False
 
     def __truediv__(self, other):
         """
@@ -463,11 +934,12 @@ class IntegerSet(NumberSet):
             [2, 4]
         """
         if isinstance(other, IntegerSet):
-            return self.__class__(
+            return _set_exact(self.__class__(
                 RealSet(*[interval_mul(I, interval_inv(J.intersection(inf_mone))[0])
                           for I in self.rset for J in other.rset]).union(
                 RealSet(*[interval_mul(I, interval_inv(J.intersection(one_inf))[0])
-                          for I in self.rset for J in other.rset])))
+                          for I in self.rset for J in other.rset]))),
+                _prod_exact(self, other))
 
         return super().__div__(other)
 
@@ -477,7 +949,7 @@ class IntegerSet(NumberSet):
     def max(self):
         return self.rset.sup()
 
-    def __iter__(self):
+    def _iter_intervals(self):
         for I in self.rset:
             if I.lower() is -infinity:
                 if I.upper() is infinity:
@@ -492,6 +964,14 @@ class IntegerSet(NumberSet):
                     yield a + n
             else:
                 yield from range(I.lower(), I.upper() + 1)
+
+    def __iter__(self):
+        if self.cong.is_trivial():
+            yield from self._iter_intervals()
+        else:
+            for n in self._iter_intervals():
+                if n in self.cong:
+                    yield n
 
     def stickelberger(self, n, r2opts):
         """
@@ -540,7 +1020,11 @@ class IntegerSet(NumberSet):
             O = self.intersection(I)
             if O:
                 M = min(M, v)
-                self = self.difference(O)
+                # Subtract I itself (which is exact, coming from a static table)
+                # rather than O: when self is inexact O is too, and difference
+                # refuses to subtract inexact sets.  Removing all of I is sound
+                # here, since every element removed is covered by I.
+                self = self.difference(I)
             if not self.rset:
                 return M
 
