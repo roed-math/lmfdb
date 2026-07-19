@@ -29,6 +29,109 @@ class LfunctionTest(LmfdbTest):
         # bogus a_101 (unknown Euler factor would default to 1), the download stops at a_100.
         assert len(an) == 100
 
+    #------------------------------------------------------
+    # Euler factors of motivic weight 1 L-functions linked to
+    # isogeny classes of abelian varieties over finite fields
+    #------------------------------------------------------
+
+    def test_euler_factor_isogeny_class_links(self):
+        # Elliptic curve 11.a has a_2 = -2, so F_2(T) = 1 + 2T + 2T^2 and the
+        # reduction mod 2 is the isogeny class 1.2.c (with 5 points); similarly
+        # a_5 = 1 gives F_5(T) = 1 - T + 5T^2 and the class 1.5.ab.
+        L = self.tc.get('/L/2/11/1.1/c1/0/0', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert 'Isogeny Class over' in page
+        assert '/Variety/Abelian/Fq/1/2/c' in page
+        assert '/Variety/Abelian/Fq/1/5/ab' in page
+        # no link at the bad prime 11
+        assert '/Variety/Abelian/Fq/1/11/' not in page
+
+        # Genus 2 curve 169.a has F_2(T) = 1 + 3T + 5T^2 + 6T^3 + 4T^4, whose
+        # reversal is the Weil polynomial of the isogeny class 2.2.d_f (the
+        # reduction of the Jacobian mod 2, with 19 points on the surface).
+        L = self.tc.get('/L/4/13e2/1.1/c1e2/0/0', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert '/Variety/Abelian/Fq/2/2/d_f' in page
+        assert '/Variety/Abelian/Fq/2/5/a_ah' in page
+
+    def test_euler_factor_isogeny_class_out_of_range(self):
+        # Dimension 3 abelian varieties are only in the database for q <= 25,
+        # so at p = 29 the label is displayed without a link.
+        L = self.tc.get('/L/6/9072e3/1.1/c1e3/0/7', follow_redirects=True)
+        page = L.get_data(as_text=True)
+        assert '/Variety/Abelian/Fq/3/5/a_a_ac' in page
+        assert '3.29.ag_bq_adi' in page
+        assert '/Variety/Abelian/Fq/3/29/' not in page
+
+    def test_Lfactor_to_gq(self):
+        from lmfdb.lfunctions.Lfunctionutilities import Lfactor_to_gq
+        # Euler factor of 11.a at 2
+        assert Lfactor_to_gq([1, 2, 2], 2) == (1, 2)
+        # correct shape but wrong prime
+        assert Lfactor_to_gq([1, 2, 2], 3) is None
+        # negative leading coefficient: not a Weil polynomial
+        assert Lfactor_to_gq([1, 0, -2], 2) is None
+        # not self-dual
+        assert Lfactor_to_gq([1, 1, 1, 3, 9], 3) == (2, 3)
+        assert Lfactor_to_gq([1, 1, 1, 4, 9], 3) is None
+        # leading coefficient not a perfect power (used to raise ValueError)
+        assert Lfactor_to_gq([1, 0, 0, 0, 8], 2) is None
+        # odd degree and constant polynomials
+        assert Lfactor_to_gq([1, 1], 2) is None
+        assert Lfactor_to_gq([1], 2) is None
+        # factored form, as for L.localfactors_factored_dict
+        assert Lfactor_to_gq([[[1, 2, 2], 1]], 2) == (1, 2)
+
+    def test_Lfactor_to_gq_weil_condition(self):
+        # Self-duality alone is not the Weil condition: the reversal must have
+        # all complex roots of absolute value sqrt(q).
+        from lmfdb.lfunctions.Lfunctionutilities import (
+            Lfactor_to_gq, Lfactor_to_label_and_link_if_exists)
+        # x^2 + 10x + 2 is self-dual with q = 2 but has real roots, violating
+        # the Hasse bound |a_2| <= 2 sqrt(2): no elliptic curve over F_2
+        assert Lfactor_to_gq([1, 10, 2], 2) is None
+        assert Lfactor_to_gq([1, 10, 2]) is None
+        # (1 + T)(1 + 2T): self-dual with q = 2, inverse roots 1 and 2
+        assert Lfactor_to_gq([1, 3, 2], 2) is None
+        # a_5 = 5 > 2 sqrt(5), while a_5 = 4 is fine
+        assert Lfactor_to_gq([1, -5, 5], 5) is None
+        assert Lfactor_to_gq([1, -4, 5], 5) == (1, 5)
+        # supersingular boundary case (x + 2)^2 over F_4: root -2 of
+        # absolute value exactly sqrt(4) must be accepted
+        assert Lfactor_to_gq([1, 4, 4]) == (1, 4)
+        # a factored payload with one non-Weil factor is rejected even
+        # though the product is still self-dual
+        assert Lfactor_to_gq([[[1, 2, 2], 1], [[1, 10, 2], 1]], 2) is None
+        assert Lfactor_to_gq([[[1, 10, 2], 1]], 2) is None
+        # over proper prime powers the Weil condition is necessary but not
+        # sufficient: no elliptic curve over F_25 has trace 0 (Honda-Tate),
+        # so 1 + 25T^2 gets no link even though (1, 25) is in the database,
+        # while the supersingular class 1.4.e is genuine and linked
+        assert Lfactor_to_gq([1, 0, 25]) == (1, 25)
+        assert Lfactor_to_label_and_link_if_exists([1, 0, 25]) == ''
+        with self.app.test_request_context():
+            assert '/Variety/Abelian/Fq/1/4/e' in Lfactor_to_label_and_link_if_exists([1, 4, 4])
+
+    def test_Lfactor_degenerate_payloads(self):
+        # Empty or malformed Euler factor data must give no label, not a 500
+        # (polynomial_unroll used to raise IndexError on an empty list).
+        from lmfdb.lfunctions.Lfunctionutilities import (
+            Lfactor_to_gq, Lfactor_to_label_and_link_if_exists)
+        assert Lfactor_to_gq([], 2) is None
+        assert Lfactor_to_gq(None, 2) is None
+        assert Lfactor_to_gq('1 + 2*T', 2) is None
+        assert Lfactor_to_gq([None, None], 2) is None
+        # malformed factored payloads: empty factor list, empty factor,
+        # missing exponent, zero exponent (empty product)
+        assert Lfactor_to_gq([[]], 2) is None
+        assert Lfactor_to_gq([[[], 1]], 2) is None
+        assert Lfactor_to_gq([[[1, 2, 2]]], 2) is None
+        assert Lfactor_to_gq([[[1, 2, 2], 0]], 2) is None
+        # the caller renders an empty table cell for all of these
+        assert Lfactor_to_label_and_link_if_exists([], 2) == ''
+        assert Lfactor_to_label_and_link_if_exists([[[1, 2, 2], 0]], 2) == ''
+        assert Lfactor_to_label_and_link_if_exists([1, 10, 2], 2) == ''
+
     def test_LDirichlet(self):
         L = self.tc.get('/L/Character/Dirichlet/19/9/', follow_redirects=True)
         assert '0.4813597783' in L.get_data(as_text=True)

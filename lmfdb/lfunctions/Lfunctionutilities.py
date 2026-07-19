@@ -1,6 +1,7 @@
 # Different helper functions.
 import math
 import re
+from functools import lru_cache
 
 from flask import url_for
 from sage.all import (
@@ -16,8 +17,6 @@ from lmfdb.logger import logger
 from sage.databases.cremona import cremona_letter_code
 from lmfdb.abvar.fq.main import url_for_label
 from lmfdb.abvar.fq.stats import AbvarFqStats
-
-AbvarFqStatslookup = AbvarFqStats._counts()
 
 
 ###############################################################
@@ -187,21 +186,85 @@ def seriesvar(index, seriestype):
         return 'T^{' + str(index) + '}'
     return ""
 
-def polynomial_unroll_get_gq(poly):
+def polynomial_unroll(poly):
+    """Convert a nonempty list of coefficients (or a nonempty list of
+    [coefficients, exponent] pairs describing a factorization) into a
+    polynomial.
+
+    Raise ValueError on empty or non-list input; malformed entries raise
+    the TypeError/ValueError of the underlying polynomial construction
+    (Lfactor_to_gq catches all of these).
+    """
+    if not isinstance(poly, (list, tuple)) or not poly:
+        raise ValueError("Euler factor must be a nonempty list")
     if isinstance(poly[0], list):
         expanded_factor_list = []
-        for tuple in poly:
-            for _ in range(tuple[1]):
-                expanded_factor_list.append(tuple[0])
-        Lpoly = prod([coeff_to_poly(factor) for factor in expanded_factor_list])
-    else:
-        Lpoly = coeff_to_poly(poly)
+        for fac, exponent in poly:
+            expanded_factor_list.extend([fac] * exponent)
+        # the initial value makes an empty product the constant polynomial 1
+        # rather than the integer 1 (whose degree method raises)
+        return prod((coeff_to_poly(fac) for fac in expanded_factor_list),
+                    coeff_to_poly([1]))
+    return coeff_to_poly(poly)
+
+def polynomial_unroll_get_gq(poly):
+    Lpoly = polynomial_unroll(poly)
     cdict = Lpoly.dict()
     deg = Lpoly.degree()
     g = deg//2
     lead = cdict[deg]
     q = lead.nth_root(g)
     return [Lpoly, cdict, g, q]
+
+def Lfactor_to_gq(poly, p=None):
+    """Return the pair (g, q) if the polynomial with the given coefficients
+    could be the reciprocal characteristic polynomial of Frobenius of a
+    g-dimensional abelian variety over F_q, and None otherwise.
+
+    The associated Weil polynomial x^{2g} + a_1 x^{2g-1} + ... + q^g is the
+    reversal, so we require even degree 2g > 0, integer coefficients, constant
+    coefficient 1, leading coefficient q^g, the self-duality
+    a_{2g-i} = q^{g-i} a_i imposed by the Weil pairing, and that all complex
+    roots of the reversal have absolute value sqrt(q) (the Riemann hypothesis
+    part of the Weil conjectures).  For q = p prime these conditions are,
+    by Honda-Tate, exactly the condition for a matching isogeny class of
+    abelian varieties over F_p to exist; for proper prime powers a Weil
+    polynomial need not be realizable (e.g. x^2 + 25 over F_25), and
+    Lfactor_to_label_and_link_if_exists double-checks against the database.
+    If p is given (the prime of the Euler factor), we require q = p;
+    otherwise we require q to be a prime power.
+    """
+    try:
+        Lpoly = polynomial_unroll(poly)
+        deg = Lpoly.degree()
+        if deg <= 0 or deg % 2 == 1:
+            return None
+        g = deg // 2
+        coeffs = Lpoly.list()
+        if coeffs[0] != 1 or any(c not in ZZ for c in coeffs):
+            return None
+        coeffs = [ZZ(c) for c in coeffs]
+        q = coeffs[deg].nth_root(g)
+    except (TypeError, ValueError, ArithmeticError, IndexError):
+        return None
+    if p is not None:
+        if q != p:
+            return None
+    elif q < 2 or not q.is_prime_power():
+        return None
+    if any(coeffs[2*g - i] != q**(g - i) * coeffs[i] for i in range(g)):
+        return None
+    # Self-duality does not imply the root condition: e.g. [1, 10, 2] is
+    # self-dual with q = 2, but x^2 + 10x + 2 has real roots of absolute
+    # value != sqrt(2) (violating the Hasse bound |a_2| <= 2 sqrt(2)), so it
+    # is not the Euler factor of any elliptic curve over F_2.  Sage's test is
+    # exact (Sturm's theorem on the trace polynomial, no floating point).
+    try:
+        if not PolynomialRing(ZZ, 'x')(coeffs[::-1]).is_weil_polynomial():
+            return None
+    except (TypeError, ValueError, ArithmeticError, NotImplementedError):
+        return None
+    return (g, q)
 
 def Lfactor_to_label(poly):
     [Lpoly, cdict, g, q] = polynomial_unroll_get_gq(poly)
@@ -212,14 +275,42 @@ def Lfactor_to_label(poly):
         return cremona_letter_code(c)
     return "%s.%s.%s" % (g, q, "_".join(extended_code(cdict.get(i, 0)) for i in range(1, g+1)))
 
-def AbvarExists(g,q):
-    return ((g,q) in AbvarFqStatslookup.keys())
+@lru_cache(maxsize=None)
+def _abvar_fq_gq_set():
+    """The set of pairs (g, q) for which the database contains the isogeny
+    classes of g-dimensional abelian varieties over F_q (the coverage is
+    complete for each such pair).  Cached on first use so that importing this
+    module does not require a database connection.
+    """
+    return set(AbvarFqStats._counts())
 
-def Lfactor_to_label_and_link_if_exists(poly):
-    [Lpoly, cdict, g, q] = polynomial_unroll_get_gq(poly)
+def AbvarExists(g, q):
+    return (g, q) in _abvar_fq_gq_set()
+
+def Lfactor_to_label_and_link_if_exists(poly, p=None):
+    """HTML for the isogeny class of abelian varieties over F_p determined by
+    the Euler factor poly at a good prime p: a link to the av/Fq page if the
+    class is in the database, a plain label if (g, q) is out of the range of
+    the database, and '' if the polynomial is not the reciprocal Weil
+    polynomial of an abelian variety over F_p.
+    """
+    gq = Lfactor_to_gq(poly, p)
+    if gq is None:
+        return ''
+    g, q = gq
     label = Lfactor_to_label(poly)
-    if not AbvarExists(g,q):
+    if not AbvarExists(g, q):
         return label
+    if not q.is_prime():
+        # For q = p prime, Lfactor_to_gq passing guarantees by Honda-Tate
+        # that the isogeny class exists (and av_fq_isog is complete for each
+        # (g, q) it covers), but for proper prime powers a Weil polynomial
+        # need not be realizable (e.g. x^2 + 25 over F_25 is not the Weil
+        # polynomial of an elliptic curve), so confirm before linking.  Not
+        # reached from L-function pages, which always pass the row's prime.
+        from lmfdb import db
+        if db.av_fq_isog.lookup(label, projection='label') is None:
+            return ''
     return '<a href="%s">%s</a>' % (url_for_label(label), label)
 
 
@@ -453,12 +544,12 @@ def lfuncEPhtml(L, fmt):
                 factors = galois_pretty_factors(poly, galois=display_galois, p=p)
                 factors = make_bigint(r'\( %s \)' % factors)
                 if display_isogeny_label(L) and p not in bad_primes:
-                    isog_class = Lfactor_to_label_and_link_if_exists(poly)
+                    isog_class = Lfactor_to_label_and_link_if_exists(poly, p)
             else:
                 factors, gal_groups = galois_pretty_factors(poly, galois=display_galois, p=p)
                 factors = make_bigint(r'\( %s \)' % factors)
                 if display_isogeny_label(L) and p not in bad_primes:
-                    isog_class = Lfactor_to_label_and_link_if_exists(poly)
+                    isog_class = Lfactor_to_label_and_link_if_exists(poly, p)
             out += "<tr" + trclass + "><td>" + goodorbad + "</td><td>" + str(p) + "</td>"
             if display_galois:
                 out += "<td class='galois'>"
