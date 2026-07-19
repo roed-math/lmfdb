@@ -90,3 +90,28 @@ class AbGpsTest(LmfdbTest):
     def test_subgroups(self):
         self.check_args("/Groups/Abstract/sub/78125.1385.15625.A","Group of order 31250000")
         self.check_args("/Groups/Abstract/sub/16384.mv.8._.BQX",'The ambient group is <a title="Abelian group [group.abelian]"')
+
+    def test_maximal_subgroups(self):
+        r"""
+        Check the maximal subgroup mode of the subgroup diagram/profile
+        """
+        # S4 has maximal subgroups A4, D4 and S3
+        page = self.tc.get("/Groups/Abstract/24.12").get_data(as_text=True)
+        assert "maximal subgroups</button>" in page
+        assert "Classes of maximal subgroups up to conjugation" in page
+        assert "Classes of maximal subgroups up to automorphism" in page
+        import re
+        profile = re.search(r'<div class="maximal_profile"[^>]*>(.*?)</div>', page, re.DOTALL).group(1)
+        assert "A_4" in profile and "D_4" in profile and "S_3" in profile
+        # 32.45 has too many subgroups to show the full diagram, but the
+        # maximal diagram (15 conjugacy classes of maximal subgroups plus
+        # the whole group) is shown
+        page = self.tc.get("/Groups/Abstract/32.45").get_data(as_text=True)
+        assert "maximal_diagram" in page and "maximal_autdiagram" in page
+        profile = re.search(r'<div class="maximal_profile"[^>]*>(.*?)</div>', page, re.DOTALL).group(1)
+        assert "x 14" in profile  # 14 conjugate copies of C_2^2 x C_4
+        # full page versions of the maximal subgroup diagrams
+        page = self.tc.get("/Groups/Abstract/maximal_diagram/24.12").get_data(as_text=True)
+        assert "Diagram of maximal subgroups up to conjugation" in page
+        page = self.tc.get("/Groups/Abstract/maximal_autdiagram/24.12").get_data(as_text=True)
+        assert "Diagram of maximal subgroups up to automorphism" in page
