@@ -1,3 +1,5 @@
+import json
+
 from lmfdb.tests import LmfdbTest
 
 class ApiTest(LmfdbTest):
@@ -57,6 +59,42 @@ class ApiTest(LmfdbTest):
         query = 'nf_fields/?degree=i12&r2=i5&_format=json'
         data = self.tc.get("/api/{}".format(query), follow_redirects=True).get_data(as_text=True)
         assert '"label": "12.2.167630295667.1",' in data
+
+    def test_api_raw(self):
+        r"""
+        Check the raw output format (LMFDB#1010): bare values, no ids or metadata.
+        A single field is emitted as one JSON value per line (also a valid
+        PARI/GP expression); several fields are emitted as one JSON array per
+        line (JSON Lines), so each record is self-delimiting and parses back
+        unambiguously with json.loads even if a value contains the delimiter.
+        """
+        # single field: one JSON value per line
+        data = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw&_fields=ainvs').get_data(as_text=True)
+        assert data == "[0, -1, 1, -10, -20]\n"
+        assert json.loads(data) == [0, -1, 1, -10, -20]
+        # several fields: one JSON array per line, parseable by json.loads
+        data = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw&_fields=ainvs,conductor').get_data(as_text=True)
+        assert data == "[[0, -1, 1, -10, -20], 11]\n"
+        assert json.loads(data) == [[0, -1, 1, -10, -20], 11]
+        # the _delim only splits _fields; the record itself is still a JSON array
+        data = self.tc.get('/api/ec_curvedata/?ainvs=li0;1;1;-840;39800&_delim=;&_format=raw&_fields=ainvs;jinv').get_data(as_text=True)
+        assert data == "[[0, 1, 1, -840, 39800], [-65626385453056, 656000554923]]\n"
+        assert json.loads(data) == [[0, 1, 1, -840, 39800], [-65626385453056, 656000554923]]
+        # a value that itself contains the delimiter still round-trips, because
+        # multi-field records are JSON arrays rather than delimiter-joined text
+        # (here the delimiter is '.', which occurs inside the label "11.a2";
+        # note Cremona 11a1 is LMFDB 11.a2, cf. test_api_usage below)
+        data = self.tc.get('/api/ec_curvedata/?label=11a1&_delim=.&_format=raw&_fields=lmfdb_label.conductor').get_data(as_text=True)
+        assert data == '["11.a2", 11]\n'
+        assert json.loads(data) == ["11.a2", 11]
+        # one line per record; each line is independently valid JSON, and a
+        # single string field is JSON-quoted (a valid PARI/GP expression)
+        data = self.tc.get('/api/ec_curvedata/?conductor=i11&_format=raw&_fields=lmfdb_label&_sort=lmfdb_label').get_data(as_text=True)
+        assert data == '"11.a1"\n"11.a2"\n"11.a3"\n'
+        assert [json.loads(line) for line in data.splitlines()] == ["11.a1", "11.a2", "11.a3"]
+        # raw format requires _fields
+        response = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw')
+        assert response.status_code == 400
 
     def test_api_usage(self):
         r"""

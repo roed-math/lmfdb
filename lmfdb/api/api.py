@@ -200,9 +200,14 @@ def api_query(table, id=None):
             return abort(code, msg % tuple(flash_extras))
 
     if fields:
-        fields = ['id'] + fields.split(DELIM)
+        raw_fields = fields.split(DELIM)
+        fields = ['id'] + raw_fields
     else:
+        raw_fields = None
         fields = 3
+
+    if format.lower() == "raw" and raw_fields is None:
+        return apierror("_format=raw requires the _fields parameter", code=400)
 
     if sortby:
         sortby = sortby.split(DELIM)
@@ -310,6 +315,22 @@ def api_query(table, id=None):
                     row[key] = "[binary data]"
         #data = [ dict([ (key, val if coll.col_type[key] != 'bytea' else "binary data") for key, val in row.items() ]) for row in data]
     data = Json.prep(data)
+
+    if format.lower() == "raw":
+        # Just the requested columns, one record per line, with no ids or
+        # metadata wrapper, for easy consumption by scripts (LMFDB#1010).
+        # A single requested field is emitted as one JSON value per line, so
+        # that an integer, float, string or (nested) list is also a valid
+        # PARI/GP expression, readable directly with readvec. Several fields
+        # are emitted as one JSON array per line (JSON Lines): each record is
+        # then self-delimiting and parses unambiguously with a JSON reader,
+        # even when a value itself contains the query delimiter.
+        if len(raw_fields) == 1:
+            col = raw_fields[0]
+            out = "".join(json.dumps(rec.get(col)) + "\n" for rec in data)
+        else:
+            out = "".join(json.dumps([rec.get(col) for col in raw_fields]) + "\n" for rec in data)
+        return Response(out, mimetype='text/plain')
 
     # preparing the datastructure
     start = offset
