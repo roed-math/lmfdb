@@ -375,6 +375,10 @@ def parse_cm_list(inp, query, qfield):
 
 Ra = PolynomialRing(QQ,'a')
 
+# The szpiro_ratio column is computed and uploaded by scripts/ecnf/generate_szpiro_ratio.py.
+# All uses are guarded by this flag so that the site keeps working until the column is added.
+HAVE_SZPIRO_RATIO = "szpiro_ratio" in db.ec_nfcurves.search_cols
+
 ecnf_columns = SearchColumns([
     MultiProcessedCol("label", "ec.curve_label", "Label", ["short_label", "field_label", "conductor_label", "iso_label", "number"],
                       lambda label, field, conductor, iso, number: '<a href="%s">%s</a>' % (
@@ -395,6 +399,7 @@ ecnf_columns = SearchColumns([
     ProcessedCol("conductor_norm", "ec.conductor", "Conductor norm", lambda v: web_latex_factored_integer(ZZ(v)), align="center"),
     ProcessedCol("normdisc", "ec.discriminant", "Discriminant norm", lambda v: web_latex_factored_integer(ZZ(v)), align="center", default=False),
     FloatCol("root_analytic_conductor", "lfunction.root_analytic_conductor", "Root analytic conductor", prec=5, default=False),
+    *([FloatCol("szpiro_ratio", "ec.szpiro_ratio", "Szpiro ratio", prec=5, default=False)] if HAVE_SZPIRO_RATIO else []),
     ProcessedCol("bad_primes", "ec.bad_reduction", "Bad primes",
                  lambda primes: ", ".join(''.join(str(p.replace('w', 'a')).split('*')) for p in primes) if primes else r"\textsf{none}",
                  default=lambda info: info.get("bad_primes"), mathmode=True, align="center"),
@@ -512,6 +517,8 @@ def elliptic_curve_search(info, query):
     parse_ints(info,query,'class_deg','class_deg')
     parse_ints(info,query,'sha','analytic order of &#1064;')
     parse_floats(info,query,'reg','regulator')
+    if HAVE_SZPIRO_RATIO:
+        parse_floats(info,query,'szpiro_ratio','Szpiro ratio')
     parse_nf_jinv(info,query,'jinv','j-invariant',field_label=query.get('field_label'))
 
     if info.get('one') == "yes":
@@ -795,7 +802,8 @@ class ECNFSearchArray(SearchArray):
              ("reg", "regulator", ["reg", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number']),
              ("sha", "analytic &#1064;", ["sha", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number']),
              ("class_size", "isogeny class size", ["class_size", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number']),
-             ("class_deg", "isogeny class degree", ["class_deg", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number'])]
+             ("class_deg", "isogeny class degree", ["class_deg", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number'])] \
+        + ([("szpiro_ratio", "Szpiro ratio", ["szpiro_ratio", 'degree', 'signature', 'abs_disc', 'field_label', 'conductor_norm', 'conductor_label', 'iso_nlabel', 'number'])] if HAVE_SZPIRO_RATIO else [])
     jump_example = "2.2.5.1-31.1-a1"
     jump_egspan = "e.g. 2.2.5.1-31.1-a1 or 2.2.5.1-31.1-a"
     jump_knowl = "ec.search_input"
@@ -947,6 +955,12 @@ class ECNFSearchArray(SearchArray):
             label="Base change of",
             knowl="ec.base_change",
             example="11a.1")
+        szpiro_ratio = TextBox(
+            name="szpiro_ratio",
+            label="Szpiro ratio",
+            knowl="ec.szpiro_ratio",
+            example="4.5",
+            example_span="4.5 or 4-5")
         count = CountBox()
 
         self.browse_array = [
@@ -960,6 +974,7 @@ class ECNFSearchArray(SearchArray):
             [class_size, class_deg],
             [galois_image, nonmax_primes],
             [base_change_label, reduction],
+            *([[szpiro_ratio]] if HAVE_SZPIRO_RATIO else []),
             [jinv],
             [count]
             ]
@@ -969,5 +984,6 @@ class ECNFSearchArray(SearchArray):
             [deg_sig, bad_primes, Qcurves, torsion_structure, include_cm],
             [sha, isodeg, class_size, reduction, galois_image],
             [base_change_label, regulator, one, class_deg, nonmax_primes],
+            *([[szpiro_ratio]] if HAVE_SZPIRO_RATIO else []),
             [jinv],
             ]

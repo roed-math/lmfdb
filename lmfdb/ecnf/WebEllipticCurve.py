@@ -420,6 +420,14 @@ class ECNF():
             self.fact_mindisc = latex_factorization(badprimes, mindisc_ords)
             self.fact_mindisc_norm = latex_factorization(badnorms, mindisc_ords, sign=signDnorm)
 
+        # Szpiro ratio log(Norm(mindisc))/log(Norm(cond)).  The
+        # attribute is set from the database row when the
+        # szpiro_ratio column exists; it is None for curves with
+        # everywhere good reduction, for which the ratio is not
+        # defined.  The default here keeps this class working until
+        # the column has been added to ec_nfcurves.
+        self.szpiro_ratio = getattr(self, "szpiro_ratio", None)
+
         j = self.field.parse_NFelt(self.jinv)
         self.j = web_latex(j)
         self.fact_j = None
