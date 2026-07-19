@@ -58,6 +58,25 @@ class ApiTest(LmfdbTest):
         data = self.tc.get("/api/{}".format(query), follow_redirects=True).get_data(as_text=True)
         assert '"label": "12.2.167630295667.1",' in data
 
+    def test_api_raw(self):
+        r"""
+        Check the raw output format (LMFDB#1010): bare values, no ids or metadata
+        """
+        # single field: one value per line
+        data = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw&_fields=ainvs').get_data(as_text=True)
+        assert data == "[0, -1, 1, -10, -20]\n"
+        # several fields are joined by the delimiter
+        data = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw&_fields=ainvs,conductor').get_data(as_text=True)
+        assert data == "[0, -1, 1, -10, -20],11\n"
+        data = self.tc.get('/api/ec_curvedata/?ainvs=li0;1;1;-840;39800&_delim=;&_format=raw&_fields=ainvs;jinv').get_data(as_text=True)
+        assert data == "[0, 1, 1, -840, 39800];[-65626385453056, 656000554923]\n"
+        # one line per record; strings are quoted (valid PARI/GP expressions)
+        data = self.tc.get('/api/ec_curvedata/?conductor=i11&_format=raw&_fields=lmfdb_label&_sort=lmfdb_label').get_data(as_text=True)
+        assert data == '"11.a1"\n"11.a2"\n"11.a3"\n'
+        # raw format requires _fields
+        response = self.tc.get('/api/ec_curvedata/?label=11a1&_format=raw')
+        assert response.status_code == 400
+
     def test_api_usage(self):
         r"""
         Check that the queries used by ODK demo all work

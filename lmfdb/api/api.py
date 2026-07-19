@@ -200,9 +200,14 @@ def api_query(table, id=None):
             return abort(code, msg % tuple(flash_extras))
 
     if fields:
-        fields = ['id'] + fields.split(DELIM)
+        raw_fields = fields.split(DELIM)
+        fields = ['id'] + raw_fields
     else:
+        raw_fields = None
         fields = 3
+
+    if format.lower() == "raw" and raw_fields is None:
+        return apierror("_format=raw requires the _fields parameter", code=400)
 
     if sortby:
         sortby = sortby.split(DELIM)
@@ -310,6 +315,15 @@ def api_query(table, id=None):
                     row[key] = "[binary data]"
         #data = [ dict([ (key, val if coll.col_type[key] != 'bytea' else "binary data") for key, val in row.items() ]) for row in data]
     data = Json.prep(data)
+
+    if format.lower() == "raw":
+        # Just the requested columns, one record per line, with no ids or
+        # metadata wrapper, for easy consumption by scripts (LMFDB#1010).
+        # Values are JSON-encoded, so a line containing a single integer,
+        # float, string or (nested) list is also a valid PARI/GP expression;
+        # multiple columns are joined by DELIM.
+        out = "".join(DELIM.join(json.dumps(rec.get(col)) for col in raw_fields) + "\n" for rec in data)
+        return Response(out, mimetype='text/plain')
 
     # preparing the datastructure
     start = offset
