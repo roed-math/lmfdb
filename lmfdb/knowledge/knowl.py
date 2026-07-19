@@ -384,6 +384,20 @@ class KnowlBackend(PostgresBase):
         if L:
             return Knowl(L[0][0], data=dict(zip(fields, L[0])))
 
+    def get_table_descriptions(self):
+        """
+        The descriptions of all tables (the ``tables.<name>`` knowls),
+        fetched in a single query.
+
+        OUTPUT:
+
+        A dictionary with table names as keys and description strings as values;
+        tables with no description knowl are omitted.
+        """
+        selecter = SQL("SELECT id, content FROM (SELECT DISTINCT ON (id) id, content FROM kwl_knowls WHERE id LIKE %s AND type = %s AND status >= %s ORDER BY id, timestamp) knowls ORDER BY id")
+        L = self._safe_execute(selecter, ["tables.%", 2, 0])
+        return {rec[0].split(".", 1)[1]: rec[1] for rec in L}
+
     def set_table_description(self, table, description):
         uid = db.login()
         kid = f"tables.{table}"

@@ -1,12 +1,42 @@
+import re
+
 from lmfdb.tests import LmfdbTest
 
 class ApiTest(LmfdbTest):
     def test_api_home(self):
         r"""
-        Check that the top-level api page works
+        Check that the top-level api page works: tables grouped into datasets
+        with row counts and descriptions, the collapsed usage docs, the filter
+        box, and links to the stats and access options pages
         """
         data = self.tc.get("/api", follow_redirects=True).get_data(as_text=True)
-        assert "API for accessing the LMFDB Database" in data
+        assert "entry point to the API" in data
+        assert "Query syntax and examples" in data
+        assert 'id="api-filter"' in data
+        # datasets are explained
+        assert "Higher genus curves with automorphisms" in data
+        assert 'id="hgcwa"' in data
+        # links to the stats and access options pages
+        assert '"/api/stats"' in data
+        assert '"/api/options"' in data
+        # test tables are hidden by default, but can be shown
+        assert "test_table" not in data
+        assert '"/api/all"' in data
+
+    def test_api_home_links(self):
+        r"""
+        Check that the tables listed on /api/all (which includes everything
+        on /api/) are exactly the search tables, with working links
+        """
+        data = self.tc.get("/api/all", follow_redirects=True).get_data(as_text=True)
+        assert "test_table" in data
+        links = re.findall(r'<td class="api-table-name"><a href="/api/([^"]+)/">([^<]+)</a>', data)
+        assert sorted(name for _, name in links) == sorted(self.db.tablenames)
+        assert all(href == name for href, name in links)
+        # the anchors in the jump strip match the dataset sections
+        sections = set(re.findall(r'<div class="api-dataset" id="([^"]+)"', data))
+        jumps = set(re.findall(r'<a href="#([^"]+)">', data)) - {"api-tables"}
+        assert jumps == sections
 
     def test_api_databases(self):
         r"""
