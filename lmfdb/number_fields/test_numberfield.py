@@ -46,6 +46,18 @@ class NumberFieldTest(LmfdbTest):
         self.check_args('/NumberField/?jump=Qsqrt5%2c+x%5E2-3&search=Go', '2.2.5.1')
         self.check_args('/NumberField/?jump=Qsqrt5%2c+x%5E2-3&search=Go', '2.2.12.1')
 
+    def test_search_subfield(self):
+        # Single intermediate field (unchanged behavior): fields containing Q(sqrt2)
+        self.check_args_with_timeout('/NumberField/?subfield=x%5E2-2', '4.0.256.1')
+        # Multiple intermediate fields: a comma-separated list matches fields
+        # containing every listed subfield (the compositum).  Q(sqrt2,sqrt3) =
+        # 4.4.2304.1 contains both Q(sqrt2) and Q(sqrt3).
+        self.check_args_with_timeout('/NumberField/?subfield=x%5E2-2%2Cx%5E2-3', '4.4.2304.1')
+        # Same search given by field labels instead of polynomials
+        self.check_args_with_timeout('/NumberField/?subfield=2.2.8.1%2C2.2.12.1', '4.4.2304.1')
+        # A malformed entry in the list gives a clean error, not a 500
+        self.check_args('/NumberField/?subfield=x%5E2-2%2Cnotafield', 'not a valid field nickname or label')
+
     def test_search_disc(self):
         self.check_args('/NumberField/?discriminant=1988-2014', '401') # factor of one of the discriminants
 
