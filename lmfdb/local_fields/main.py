@@ -436,10 +436,10 @@ def galcolresponse(n,t,cache):
     return group_pretty_and_nTj(n, t, cache=cache)
 
 def formatbracketcol(blist):
+    if blist is None or blist == '':
+        return 'not computed'
     if blist == []:
         return r'$[\ ]$'
-    if blist == '':
-        return 'not computed'
     return f'${blist}$'
 
 def intcol(j):
@@ -1919,10 +1919,18 @@ def galsortkey(gal):
         return [-1, -1]
     return galdata(gal)
 
+# Sentinel returned by the query_formatters below for bucket values that have no
+# search representation (e.g. a not-computed Galois group, or an empty/uncomputed
+# list of slopes).  LFStats.display_data detects this marker in an assembled
+# drill-down url and blanks the link, so that clicking the count of a "not computed"
+# bucket does not open an unfiltered search (which would return every field).  The
+# NUL byte cannot occur in a real url query fragment, making detection unambiguous.
+NO_SEARCH_QUERY = "\x00"
+
 def galquery(gal):
     if gal is None:
         # There is no way to search for fields where the Galois group is not computed
-        return "gal="
+        return NO_SEARCH_QUERY
     return "gal=%s" % galunformatter(gal)
 
 CONTENT_RE = re.compile(r"\[([0-9/, ]*)\](?:_\{(\d+)\})?(?:\^\{(\d+)\})?")
@@ -1964,7 +1972,7 @@ def topslope_query(ts):
         lower = ts.get("$gte", ts.get("$gt"))
         upper = ts.get("$lte", ts.get("$lt"))
         if lower is None and upper is None:
-            return "topslope="
+            return NO_SEARCH_QUERY
         elif lower is None:
             # top slopes are always nonnegative
             return "topslope=0-%s" % dec(upper)
@@ -1979,7 +1987,7 @@ def content_query(shortname, quantifier):
     def inner(val):
         if val is None or str(val) in ("", "[]"):
             # There is no way to search for an empty or uncomputed list of slopes
-            return "%s=" % shortname
+            return NO_SEARCH_QUERY
         return "%s=%s&%s=exactly" % (shortname, val, quantifier)
     return inner
 
@@ -1987,7 +1995,7 @@ def bracket_query(shortname):
     # For columns searched via parse_bracketed_posints, which matches exactly
     def inner(val):
         if val is None:
-            return "%s=" % shortname
+            return NO_SEARCH_QUERY
         return "%s=%s" % (shortname, val)
     return inner
 
@@ -1995,7 +2003,7 @@ def nullable_int_query(shortname):
     def inner(val):
         if val is None:
             # There is no way to search for fields where this is not computed
-            return "%s=" % shortname
+            return NO_SEARCH_QUERY
         return "%s=%s" % (shortname, range_formatter(val))
     return inner
 
@@ -2059,7 +2067,7 @@ class LFStats(StatsDisplay):
         'galois_label': galquery,
         'slopes': content_query('slopes', 'slopes_quantifier'),
         'visible': content_query('visible', 'visible_quantifier'),
-        'hidden': (lambda hid: r'hidden=%s' % (content_unformatter(hid) if hid else "")),
+        'hidden': (lambda hid: r'hidden=%s' % content_unformatter(hid) if hid else NO_SEARCH_QUERY),
         'top_slope': topslope_query,
         'u': nullable_int_query('u'),
         't': nullable_int_query('t'),
@@ -2103,6 +2111,28 @@ class LFStats(StatsDisplay):
         self.numfields = db.lf_fields.count()
         self.num_abs_families = db.lf_families.count({"n0":1})
         self.num_rel_families = db.lf_families.count({"n0":{"$gt": 1}})
+
+    @staticmethod
+    def _suppress_null_links(data):
+        # Suppress drill-down links for buckets whose value cannot be expressed as a
+        # search.  Such a bucket (e.g. a not-computed Galois group, or an empty slope
+        # content) gets NO_SEARCH_QUERY from its query_formatter; without this the count
+        # would link to a url like /padicField/?gal= whose empty parameter the search
+        # parser ignores, opening an unfiltered search rather than the counted fields.
+        # A blank query is rendered without a link by stat_1d.html / stat_2d.html.
+        def suppress(cells):
+            for cell in cells:
+                if cell.get('query') and NO_SEARCH_QUERY in cell['query']:
+                    cell['query'] = ''
+        if 'counts' in data:
+            suppress(data['counts'])
+        if 'grid' in data:
+            for _row_header, row in data['grid']:
+                suppress(row)
+        return data
+
+    def display_data(self, *args, **kwds):
+        return self._suppress_null_links(super().display_data(*args, **kwds))
 
     @staticmethod
     def dynamic_parse(info, query):
