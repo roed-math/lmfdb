@@ -117,6 +117,26 @@ class EllCurveTest(LmfdbTest):
         L = self.tc.get('/EllipticCurve/?start=0&torsion=1&isodeg=2')
         assert 'No matches' in L.get_data(as_text=True)
 
+    def test_szpiro_ratio(self):
+        r"""
+        Test that Szpiro ratio display and search work whether or not
+        the szpiro_ratio column has been added to ec_nfcurves
+        """
+        from lmfdb.ecnf.main import HAVE_SZPIRO_RATIO
+        # 2.2.5.1-31.1-a1 has Szpiro ratio exactly 1 (Norm(D_min) = Norm(N) = 31)
+        L = self.tc.get('/EllipticCurve/2.2.5.1/31.1/a/1')
+        t = L.get_data(as_text=True)
+        assert 'Conductor norm' in t
+        if HAVE_SZPIRO_RATIO:
+            assert 'Szpiro ratio' in t
+        else:
+            assert 'Szpiro ratio' not in t
+        # When the column is missing, a szpiro_ratio constraint is
+        # ignored rather than producing an error; when it is present,
+        # this is a genuine search that matches 2.2.5.1-31.1-a1.
+        L = self.tc.get('/EllipticCurve/?field=2.2.5.1&szpiro_ratio=0.5-1.5')
+        assert '31.1-a1' in L.get_data(as_text=True)
+
     def test_cm_disc_search(self):
         r"""
         Test that searching for CM field discriminant works
