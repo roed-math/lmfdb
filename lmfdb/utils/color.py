@@ -196,6 +196,8 @@ class ColorScheme():
         # Buttons
         'button_background': 'col_main_b',
         'select_background': 'col_main_ll',
+        # Background for search inputs actively constraining the results shown
+        'search_active_background': '#FFF9C4', # P2-100
         'button_border': 'col_main_lg',
         'button_background_hover': 'col_main_l',
         'button_border_hover': 'col_main_lg',

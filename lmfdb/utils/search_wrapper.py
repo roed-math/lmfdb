@@ -574,6 +574,11 @@ class SearchWrapper(Wrapper):
             SelectBox(name="color", label="Color", options=color_fields),
             CountBox(),
         ]
+        for box in info["diagram_boxes"]:
+            # These choose how the diagram is drawn (which fields go on each
+            # axis and how many points to show) rather than constraining the
+            # underlying results, so they are not highlighted as active.
+            box.is_constraint = False
 
         # Build query using the same parsing function
         data = self.make_query(info, False)

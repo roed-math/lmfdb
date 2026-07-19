@@ -90,6 +90,27 @@ class SearchBox(TdElt):
     Class abstracting the input boxes used for LMFDB searches.
     """
     _default_width = 160
+    # Whether filling this box constrains the displayed search results
+    # (set to False for boxes that only affect the display, like the
+    # number of results to show or the sort order)
+    is_constraint = True
+
+    def _classes(self, info):
+        """
+        The CSS classes for this box's input element: ``advanced`` for inputs
+        only shown when advanced options are toggled, ``search_constraint``
+        for inputs that constrain the search results when filled in, and
+        ``search_active`` when such an input is currently filled in, so that
+        it can be highlighted on search results pages.
+        """
+        classes = []
+        if self.advanced:
+            classes.append("advanced")
+        if info is not None and self.is_constraint:
+            classes.append("search_constraint")
+            if info.get(self.name) not in (None, ""):
+                classes.append("search_active")
+        return classes
 
     def __init__(
         self,
@@ -223,8 +244,9 @@ class TextBox(SearchBox):
         keys = self.extra + ['type="text"', 'name="%s"' % self.name]
         if self.id is not None:
             keys.append('id="%s"' % self.id)
-        if self.advanced:
-            keys.append('class="advanced"')
+        classes = self._classes(info)
+        if classes:
+            keys.append('class="%s"' % " ".join(classes))
         if self.example is not None:
             if self.example_value and info is None:
                 keys.append('value="%s"' % self.example)
@@ -312,8 +334,9 @@ class SelectBox(SearchBox):
         keys = self.extra + ['name="%s"' % self.name]
         if self.id is not None:
             keys.append('id="%s"' % self.id)
-        if self.advanced:
-            keys.append('class="advanced"')
+        classes = self._classes(info)
+        if classes:
+            keys.append('class="%s"' % " ".join(classes))
         if self.example_value and info is None:
             info = {self.name:self.example}
         if info is None:
@@ -368,8 +391,9 @@ class HiddenBox(SearchBox):
 class CheckBox(SearchBox):
     def _input(self, info=None):
         keys = ['name="%s"' % self.name, 'value="yes"']
-        if self.advanced:
-            keys.append('class="advanced"')
+        classes = self._classes(info)
+        if classes:
+            keys.append('class="%s"' % " ".join(classes))
         if info is not None and info.get(self.name, False):
             keys.append("checked")
         return '<input type="checkbox" %s>' % (" ".join(keys),)
@@ -471,6 +495,8 @@ class SubsetNoExcludeBox(SelectBox):
                 ('subset', 'subset')]
 
 class CountBox(TextBox):
+    is_constraint = False
+
     def __init__(self):
         TextBox.__init__(
             self,
@@ -483,6 +509,7 @@ class CountBox(TextBox):
 
 class ColumnController(SelectBox):
     wrap_mixins = {'width': '170px'}
+    is_constraint = False
 
     def __init__(self):
         super().__init__(
@@ -559,6 +586,7 @@ class ColumnController(SelectBox):
 
 class SortController(SelectBox):
     wrap_mixins = {'width': '170px'}
+    is_constraint = False
 
     def __init__(self, options, knowl):
         extra = [
@@ -801,6 +829,10 @@ class SearchArray(UniqueRepresentation):
                     label="Proportions" if i == 1 else "",
                     rowspan=(1, 2),
                     knowl="stats.proportions" if i == 1 else None)
+                for box in (cols, buckets, totals, proportions):
+                    # These select the variables and format for the statistics
+                    # display rather than constraining the underlying results
+                    box.is_constraint = False
                 if i == 1:
                     array.append([cols, buckets, totals, proportions])
                 else:
