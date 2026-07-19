@@ -158,6 +158,24 @@ class AVTest(LmfdbTest):
         page = self.tc.get('Variety/Abelian/Fq/download_curves/5.3.ac_e_ai_v_abl', follow_redirects=True)
         assert 'No curves for abelian variety isogeny class 5.3.ac_e_ai_v_abl' in page.get_data(as_text=True)
 
+    def test_curves_search_column(self):
+        r"""
+        Test the curves column on search results pages, including downloads.
+        """
+        # The column is available in the column dropdown
+        page = self.tc.get("/Variety/Abelian/Fq/?q=4&g=1").get_data(as_text=True)
+        assert '<option value="curves">' in page
+        # A single curve is displayed as is, longer lists are truncated
+        page = self.tc.get("/Variety/Abelian/Fq/?q=4&g=1&showcol=curves").get_data(as_text=True)
+        assert "$y^2+y=x^3+a$" in page
+        assert "$y^2+a y=x^3$ and 1 more" in page
+        # Search downloads contain the full lists
+        data = self.tc.get("/Variety/Abelian/Fq/?q=4&g=1&showcol=curves&Submit=sage&download=1&query=%7B%27q%27%3A+4%2C+%27g%27%3A+1%7D").get_data(as_text=True)
+        assert '["y^2+a*y=x^3", "y^2+(a+1)*y=x^3"]' in data
+        # Classes for which curves have not been computed display an empty cell
+        page = self.tc.get("/Variety/Abelian/Fq/?q=729&g=2&showcol=curves").get_data(as_text=True)
+        assert "2.729.aee_gmg" in page
+
     def test_cyclic_group_of_points_display(self):
         r"""
         Check that the cyclic group of points information is displayed

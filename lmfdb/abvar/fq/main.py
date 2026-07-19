@@ -16,7 +16,7 @@ from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.api import datapage
 from . import abvarfq_page
 from .search_parsing import parse_nf_string, parse_galgrp
-from .isog_class import validate_label, AbvarFq_isoclass
+from .isog_class import validate_label, AbvarFq_isoclass, curves_display_search
 from .stats import AbvarFqStats
 from lmfdb.number_fields.web_number_field import nf_display_knowl, field_pretty
 from lmfdb.utils import redirect_no_cache
@@ -706,13 +706,15 @@ abvar_columns = SearchColumns([
     MathCol("abvar_counts", "ag.fq.point_counts", r"$\mathbb{F}_{q^k}$ points on variety", short_title="Fq^k points on variety", default=False),
     MathCol("jacobian_count", "av.jacobian_count", "Jacobians", default=False),
     MathCol("hyp_count", "av.hyperelliptic_count", "Hyperelliptic Jacobians", default=False),
+    ProcessedCol("curves", "ag.jacobian", "Curves", curves_display_search, default=False,
+                 download_desc="Equations of curves whose Jacobians are in the isogeny class.  For a base field GF(p^r) with r > 1, the variable a denotes a generator of the base field over its prime field.  The list may be empty or missing if no such curves are known."),
     MathCol("twist_count", "av.twist", "Num. twists", default=False),
     MathCol("max_twist_degree", "av.twist", "Max. twist degree", default=False),
     MathCol("geometric_extension_degree", "av.endomorphism_field", "End. degree", default=False),
     ProcessedCol("number_fields", "av.fq.number_field", "Number fields", lambda nfs: ", ".join(nf_display_knowl(nf, field_pretty(nf)) for nf in nfs), default=False),
     SearchCol("galois_groups_pretty", "nf.galois_group", "Galois groups", download_col="galois_groups", default=False),
     SearchCol("decomposition_display_search", "av.decomposition", "Isogeny factors", download_col="decompositionraw")],
-    db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "is_geometrically_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "curve_counts", "abvar_count", "abvar_counts", "jacobian_count", "hyp_count", "number_fields", "galois_groups", "slopes", "newton_elevation", "twist_count", "max_twist_degree", "geometric_extension_degree", "angle_rank", "angle_corank", "is_supersingular", "has_principal_polarization", "has_jacobian", "is_cyclic", "noncyclic_primes"])
+    db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "is_geometrically_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "curve_counts", "curves", "abvar_count", "abvar_counts", "jacobian_count", "hyp_count", "number_fields", "galois_groups", "slopes", "newton_elevation", "twist_count", "max_twist_degree", "geometric_extension_degree", "angle_rank", "angle_corank", "is_supersingular", "has_principal_polarization", "has_jacobian", "is_cyclic", "noncyclic_primes"])
 
 def abvar_postprocess(res, info, query):
     gals = set()
