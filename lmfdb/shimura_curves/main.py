@@ -957,7 +957,10 @@ def rational_point_search(info, query):
             query['isolated'] = { "$in" : [0,1,3,4] }
         elif info['isolated'] == "unknown":
             query['isolated'] = { "$in" : [0,1,3] }
-    parse_bool(info, query, "cusp")
+    # Shimura curves are compact: shimcurve_points has no 'cusp' column, so there
+    # is no cusp filter here.  (Parsing 'cusp' 500'd on ?cusp=no; see T24 item 2.
+    # The staged low-degree-points UI still passes cusp=... -- harmless no-op now;
+    # T03 owns the point schema and can drop those params when it lands.)
 
 class RatPointSearchArray(SearchArray):
     noun = "point"
