@@ -220,11 +220,11 @@ We are removing this section until we have more sources of non-rational points. 
 <table class="ntdata">
   <thead>
   {% if curve.known_low_degree_points %}
-    <tr><th>{{ KNOWL('shimcurve.point_degree', 'Degree') }}</th><th>{{ KNOWL('shimcurve.point_residue_field', 'Residue field') }}</th><th>{{ KNOWL('ec.j_invariant', '$j$-invariant') }}</th><th>{{ KNOWL('ec.j_invariant', '$\\Q(j)$') }}</th><th>{{ KNOWL('nf.weil_height', '$j$-height') }}</th><th align="center">{{ KNOWL('ec.complex_multiplication', 'CM') }}</th><th>{{ KNOWL('ag.isolated_point', 'Isolated') }}</th>{% if not curve.contains_negative_one %}<th>{{ KNOWL('ec.curve_label', 'Elliptic Curve') }}</th>{% endif %}{{curve.nf_point_coord_headers|safe}}</tr>
+    <tr><th>{{ KNOWL('shimcurve.point_degree', 'Degree') }}</th><th>{{ KNOWL('shimcurve.point_residue_field', 'Residue field') }}</th><th>{{ KNOWL('ec.j_invariant', '$j$-invariant') }}</th><th>{{ KNOWL('ec.j_invariant', '$\\Q(j)$') }}</th><th>{{ KNOWL('nf.weil_height', '$j$-height') }}</th><th align="center">{{ KNOWL('ec.complex_multiplication', 'CM') }}</th><th>{{ KNOWL('ag.isolated_point', 'Isolated') }}</th>{% if not curve.is_coarse %}<th>{{ KNOWL('ec.curve_label', 'Elliptic Curve') }}</th>{% endif %}{{curve.nf_point_coord_headers|safe}}</tr>
   </thead>
   <tbody>
     {% for ec_label, ec_url, cm, isolated, jinv, res_field, j_field, degree, j_height, coords in curve.db_nf_points %}
-      <tr><td align="center">${{degree}}$</td><td>{{res_field | safe}}</td><td>{{jinv | safe}}</td><td>{{j_field | safe}}</td><td align="right">${{"%.3f"%j_height}}$</td><td align="center">{{ cm | safe}}</td><td>{{isolated | safe}}</td>{% if not curve.contains_negative_one %}<td><a href="{{ec_url}}">{{ec_label}}</a></td>{% endif %}{{coords | safe}}</tr>
+      <tr><td align="center">${{degree}}$</td><td>{{res_field | safe}}</td><td>{{jinv | safe}}</td><td>{{j_field | safe}}</td><td align="right">${{"%.3f"%j_height}}$</td><td align="center">{{ cm | safe}}</td><td>{{isolated | safe}}</td>{% if not curve.is_coarse %}<td><a href="{{ec_url}}">{{ec_label}}</a></td>{% endif %}{{coords | safe}}</tr>
     {% endfor %}
   {% else %}
     <tr><th>{{ KNOWL('shimcurve.point_degree', 'Degree') }}</th><th>{{ KNOWL('shimcurve.point_residue_field', 'Residue field') }}</th>{{curve.nf_point_coord_headers|safe}}</tr>
