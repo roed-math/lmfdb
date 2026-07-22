@@ -1056,9 +1056,12 @@ class RatPointSearchArray(SearchArray):
 
 class ShimCurve_stats(StatsDisplay):
     def __init__(self):
-        # !!! For some reason counting the empty query returns 0 ?
-        self.ncurves = comma(db.gps_shimura_test.count({'discB' : {'$gt' : 0}}))
-        # self.ncurves = comma(db.gps_shimura_test.count())
+        # count() with an empty query returns the cached unconstrained "total"
+        # stat.  It used to be a stale 0 (the total stat had been recorded as 0),
+        # which is why a {'discB': {'$gt': 0}} workaround was needed here.  That
+        # stale stat is gone, so count() now returns the correct total, matching
+        # the sibling modular-curve stats (gps_gl2zhat_fine.count()).
+        self.ncurves = comma(db.gps_shimura_test.count())
         self.max_level = db.gps_shimura_test.max("level")
 
     @property
