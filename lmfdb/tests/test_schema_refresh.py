@@ -135,6 +135,24 @@ def test_failed_refresh_drops_listener_for_retry():
     assert refresher._listener is not None
 
 
+def test_hot_standby_disables_permanently():
+    class RecoveryError(RuntimeError):
+        sqlstate = "25006"
+
+    db = StubDB()
+    db.listen_error = RecoveryError("cannot execute LISTEN during recovery")
+    refresher = SchemaRefresher(db=db, retry_interval=0.0)
+    refresher.check()
+    assert refresher._listener is None
+    # Permanent: even after the retry interval (0s here) and with the error
+    # cleared, no new subscription is attempted -- a standby can never
+    # deliver notifications, so retrying would just warn forever.
+    db.listen_error = None
+    refresher.check()
+    assert db.listeners == []
+    assert db.refreshes == 0
+
+
 def test_forked_worker_builds_its_own_listener():
     db = StubDB()
     refresher = SchemaRefresher(db=db)

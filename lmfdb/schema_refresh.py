@@ -50,6 +50,14 @@ policies chosen here:
 If psycodict does not provide the notification API (any release before 1.0),
 the refresher logs once and disables itself, so this module is safe to
 deploy against current psycodict.
+
+The refresher likewise disables itself, for the life of the process, when
+the database is a hot standby: a server in recovery refuses ``LISTEN``
+outright (SQLSTATE 25006), and notifications cannot traverse physical
+replication anyway (``NOTIFY`` is not WAL-logged).  This is the situation
+for development copies of the website pointing at devmirror; they keep the
+status quo (restart to pick up schema changes) unless a polling fallback is
+added later.
 """
 import os
 import threading
@@ -88,6 +96,7 @@ class SchemaRefresher:
         self._listener = None
         self._pid = None
         self._next_attempt = 0.0
+        self._disabled = False
         self._logged_unavailable = False
         # before_request hooks may run concurrently under threaded or gevent
         # servers; one poller at a time is plenty, so extra callers just skip.
@@ -123,6 +132,8 @@ class SchemaRefresher:
             self._lock.release()
 
     def _check(self):
+        if self._disabled:
+            return
         if not self.available():
             if not self._logged_unavailable:
                 logger.info(
@@ -134,8 +145,11 @@ class SchemaRefresher:
         if self._listener is not None and self._pid != os.getpid():
             # This process was forked (gunicorn --preload) after the listener
             # was built, so the socket is shared with the parent.  Abandon it
-            # without closing -- a close would corrupt the parent's copy --
-            # and build our own below.
+            # without closing: an explicit close would send a protocol
+            # Terminate over the shared socket, killing the parent's copy,
+            # while just dropping the reference is safe (psycopg skips the
+            # protocol shutdown when collecting a connection in a process
+            # other than the one that created it).  Then build our own below.
             self._listener = None
         if self._listener is None:
             if time.monotonic() < self._next_attempt:
@@ -144,6 +158,19 @@ class SchemaRefresher:
                 self._listener = self.db.listener()
                 self._pid = os.getpid()
             except Exception as err:
+                code = getattr(err, "sqlstate", None) or getattr(err, "pgcode", None)
+                if code == "25006":
+                    # "cannot execute LISTEN during recovery": the database is
+                    # a hot standby, which can never deliver notifications
+                    # (NOTIFY is not WAL-logged), so this is permanent for the
+                    # life of the server -- disable rather than retry forever.
+                    self._disabled = True
+                    logger.info(
+                        "Database is a hot standby (%s); schema-change "
+                        "notifications are unavailable there, so table "
+                        "metadata will refresh only on restart", err
+                    )
+                    return
                 self._next_attempt = time.monotonic() + self.retry_interval
                 logger.warning(
                     "Could not subscribe to schema-change notifications (%s); will retry", err
