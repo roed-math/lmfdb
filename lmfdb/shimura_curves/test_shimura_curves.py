@@ -5,11 +5,27 @@ from lmfdb.tests import LmfdbTest
 class ShimCrvTest(LmfdbTest):
     def test_home(self):
         L = self.tc.get('/ShimuraCurve/Q/')
-        assert 'Shimura curves' in L.get_data(as_text=True)
-        assert 'Browse' in L.get_data(as_text=True)
-        assert 'Search' in L.get_data(as_text=True)
-        assert 'Find' in L.get_data(as_text=True)
-        assert 'X_0(N)' in L.get_data(as_text=True)
+        page = L.get_data(as_text=True)
+        assert 'Shimura curves' in page
+        assert 'Browse' in page
+        assert 'Search' in page
+        assert 'Find' in page
+        # Assert real Shimura-curve content: this database parametrizes abelian
+        # surfaces with PQM and browses by families X(D;1), X(D;N), ... .  The
+        # copied-over test asserted the modular-curve string 'X_0(N)', which does
+        # not appear on this page.
+        assert 'abelian surfaces' in page
+        assert 'X(D;1)' in page
+
+    def test_curve_page(self):
+        # A known Shimura curve page should load, show its label, and identify
+        # itself as a Shimura curve.
+        label = '10.1.1.4.0.a.1'
+        L = self.tc.get('/ShimuraCurve/Q/%s/' % label)
+        assert L.status_code == 200
+        page = L.get_data(as_text=True)
+        assert label in page
+        assert 'Shimura curve' in page
 
     def test_download(self):
         # All three download routes must return 200 with the label in the payload.
