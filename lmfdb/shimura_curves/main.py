@@ -906,7 +906,7 @@ ratpoint_columns = SearchColumns([
                  lambda x: r"&#x2713;" if x == 4 else (r"" if x in [2,-1,-2,-3,-4] else r"<i>?</i>"), align="center"),
     ProcessedCol("cm_discriminant", "ec.complex_multiplication", "CM", lambda v: "" if v == 0 else v,
                  short_title="CM discriminant", mathmode=True, align="center", orig="cm"),
-    LinkCol("Elabel", "shimcurve.elliptic_curve_of_point", "Elliptic curve", lambda Elabel: url_for_ECNF_label(Elabel) if "-" in Elabel else url_for_EC_label(Elabel)),
+    LinkCol("Clabel", "shimcurve.elliptic_curve_of_point", "Elliptic curve", lambda Clabel: url_for_ECNF_label(Clabel) if "-" in Clabel else url_for_EC_label(Clabel)),
     ProcessedCol("residue_field", "shimcurve.point_residue_field", "Residue field", lambda field: nf_display_knowl(field, field_pretty(field)), align="center"),
     ProcessedCol("j_field", "ec.j_invariant", r"$\Q(j)$", lambda field: nf_display_knowl(field, field_pretty(field)), align="center", short_title="Q(j)"),
     MultiProcessedCol("jinv", "ec.j_invariant", "$j$-invariant", ["jinv", "j_field", "jorig", "residue_field"], showj_nf, download_col="jinv"),
