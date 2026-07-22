@@ -53,12 +53,10 @@ from lmfdb.shimura_curves.web_curve import (
     WebShimCurve, get_bread, canonicalize_name, name_to_latex, factored_conductor,
     formatted_dims, url_for_EC_label, url_for_ECNF_label, showj_nf, combined_data,
 )
-from lmfdb.modular_curves.main import CP_LABEL_GENUS_RE
 
 coarse_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+\.[a-z]+\.\d+"
 fine_label_re = r"\d+\.\d+\.(?:\d+\.)?\d+\.\d+\.\d+-\d+\.\d+\.[a-z]+\.\d+\.\d+"
 LABEL_RE = re.compile(f"({coarse_label_re})|({fine_label_re})")
-FINE_LABEL_RE = re.compile(fine_label_re)
 NAME_RE = re.compile(r"X\*?\(\d+(,\d+)?(;|,)\d+\)")
 
 def learnmore_list():
@@ -116,12 +114,6 @@ def interesting():
         bread=get_bread("Interesting"),
         learnmore=learnmore_list(),
     )
-
-def shimcurve_link(label):
-    if int(label.split(".")[0]) <= 70:
-        return '<a href=%s>%s</a>' % (url_for("shimcurve.by_label", label=label), label)
-    else:
-        return label
 
 @shimcurve_page.route("/Q/<label>/")
 def by_label(label):
@@ -220,13 +212,6 @@ def curveinfo(label):
 
 def url_for_shimcurve_label(label):
     return url_for(".by_label", label=label)
-
-def url_for_RZB_label(label):
-    return "https://users.wfu.edu/rouseja/2adic/" + label + ".html"
-
-def url_for_CP_label(label):
-    genus = CP_LABEL_GENUS_RE.fullmatch(label)[1]
-    return "https://mathstats.uncg.edu/sites/pauli/congruence/csg" + genus + ".html#group" + label
 
 def shimcurve_lmfdb_label(label):
     if LABEL_RE.fullmatch(label):

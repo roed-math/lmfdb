@@ -3,9 +3,9 @@
 from collections import Counter
 from flask import url_for
 
-from sage.all import lazy_attribute, prod, euler_phi, ZZ, QQ, latex, PolynomialRing, lcm, NumberField, Integer, Rational
+from sage.all import lazy_attribute, ZZ, QQ, latex, PolynomialRing, lcm, NumberField, Integer, Rational
 
-from lmfdb.utils import WebObj, integer_prime_divisors, teXify_pol, web_latex, pluralize, display_knowl
+from lmfdb.utils import WebObj, teXify_pol, web_latex, pluralize, display_knowl
 from lmfdb import db
 from lmfdb.classical_modular_forms.main import url_for_label as url_for_mf_label
 from lmfdb.elliptic_curves.elliptic_curve import url_for_label as url_for_EC_label
@@ -570,12 +570,6 @@ class WebShimCurve(WebObj):
     def has_more_modelmaps(self):
         return len(self.modelmaps_to_display) < self.modelmaps_count
 
-    def full_torsion_field_degree(self):
-        N = self.level
-        P = integer_prime_divisors(N)
-        GL2size = euler_phi(N) * N * (N // prod(P))**2 * prod(p**2 - 1 for p in P)
-        return GL2size // self.index
-
     def show_quaternion(g):
         ret = r"";
         basis = ["","i","j","k"]
@@ -731,12 +725,6 @@ class WebShimCurve(WebObj):
         return self._curvedata({"label": {"$in": self.factorization, "$not": self.label}})
 
     @lazy_attribute
-    def newform_level(self):
-        if self.newforms is None:
-            return 1
-        return lcm([int(f.split('.')[0]) for f in self.newforms])
-
-    @lazy_attribute
     def downloads(self):
         self.downloads = [
             (
@@ -873,26 +861,6 @@ class WebShimCurve(WebObj):
                  rec["j_height"],
                  coordstr))
         return pts
-
-    @lazy_attribute
-    def old_db_nf_points(self):
-        # Use the db.ec_curvedata table to automatically find rational points
-        #limit = None if (self.genus > 1 or self.genus == 1 and self.rank == 0) else 10
-        if ZZ(self.level).is_prime():
-            curves = list(db.ec_nfcurves.search(
-                {"galois_images": {"$contains": self.Slabel},
-                 "degree": {"$lte": self.genus}},
-                one_per=["jinv"],
-                projection=["label", "degree", "equation", "jinv", "cm"]))
-            Ra = PolynomialRing(QQ,'a')
-            return [(rec["label"],
-                     url_for_ECNF_label(rec["label"]),
-                     rec["equation"],
-                     "no" if rec["cm"] == 0 else f'${rec["cm"]}$',
-                     "yes" if (rec["degree"] < ZZ(self.q_gonality_bounds[0]) / 2 or rec["degree"] < self.q_gonality_bounds[0] and (self.rank == 0 or self.simple and rec["degree"] < self.genus)) else "",
-                     web_latex(Ra([QQ(s) for s in rec["jinv"].split(',')]))) for rec in curves]
-        else:
-            return []
 
     @lazy_attribute
     def rational_points_description(self):
