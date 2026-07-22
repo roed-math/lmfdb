@@ -22,6 +22,7 @@ from sage.all import cached_function
 
 from .logger import critical
 from .homepage import load_boxes, contribs
+from .schema_refresh import schema_refresher
 
 LMFDB_VERSION = "LMFDB Release 1.2.1"
 
@@ -339,6 +340,21 @@ def get_menu_cookie():
     sets cookie for show/hide sidebar
     """
     g.show_menu = str(request.cookies.get('showmenu')) != "False"
+
+##############################
+#      Schema refreshing     #
+##############################
+
+
+@app.before_request
+def refresh_schema_if_changed():
+    """
+    Pick up schema changes announced on psycodict's LISTEN/NOTIFY channel, so
+    that added or dropped columns and tables become visible to this worker
+    without a restart.  A non-blocking poll (and a no-op when psycodict does
+    not provide the notification API).
+    """
+    schema_refresher.check()
 
 ##############################
 #       Top-level pages      #
