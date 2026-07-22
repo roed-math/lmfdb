@@ -399,9 +399,10 @@ class ShimCurve_download(Downloader):
         s += "\n// Modular data\n"
         s += "// CM discriminants\n"
         s += "CM_discs := %s;\n" % rec['cm_discriminants']
-        if rec['factorization'] != []:
+        factorization = rec.get('factorization') or []
+        if factorization != []:
             s += "// Shimura curve is a fiber product of the following curves"
-            s += "factors := %s\n" % [f.replace("'", "\"") for f in rec['factorization']]
+            s += "factors := %s\n" % [f.replace("'", "\"") for f in factorization]
         s += "// Groups containing given group, corresponding to curves covered by given curve\n"
         parents_mag = "%s" % rec['parents']
         parents_mag = parents_mag.replace("'", "\"")
@@ -448,10 +449,15 @@ class ShimCurve_download(Downloader):
             model_id += 1
 
         s += "\n// Maps from this Shimura curve, if computed\n"
-        maps = list(db.shimcurve_modelmaps.search(
-            {"domain_label": label},
-            ["domain_model_type", "codomain_label", "codomain_model_type",
-             "coordinates", "leading_coefficients"]))
+        # shimcurve_modelmaps is created/populated by T02; guard so the download
+        # does not 500 while that table is absent.
+        if "shimcurve_modelmaps" in db.tablenames:
+            maps = list(db.shimcurve_modelmaps.search(
+                {"domain_label": label},
+                ["domain_model_type", "codomain_label", "codomain_model_type",
+                 "coordinates", "leading_coefficients"]))
+        else:
+            maps = []
         codomain_labels = [m["codomain_label"] for m in maps]
         codomain_models = list(db.shimcurve_models.search(
             {"shimcurve": {"$in": codomain_labels}},
