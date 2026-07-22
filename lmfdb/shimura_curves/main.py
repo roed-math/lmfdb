@@ -499,7 +499,7 @@ class ShimCurve_download(Downloader):
                     name += " to the canonical model of Shimura curve"
                 elif m["codomain_model_type"] == 1:
                     has_codomain_equation = False
-                    name += " to a modular curve isomorphic to P^1"
+                    name += " to a Shimura curve isomorphic to P^1"
                 elif m["codomain_model_type"] == 2:
                     name += " to the plane model of Shimura curve"
                 elif m["codomain_model_type"] == 5:
