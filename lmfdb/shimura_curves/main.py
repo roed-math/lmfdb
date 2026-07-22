@@ -275,6 +275,7 @@ shimcurve_columns = SearchColumns(
         MathCol("genus", "shimcurve.genus", "Genus"),
         ProcessedCol("rank", "shimcurve.rank", "Rank", lambda r: "" if r is None else r, default=lambda info: info.get("rank") or info.get("genus_minus_rank"), align="center", mathmode=True),
         ProcessedCol("q_gonality_bounds", "shimcurve.gonality", r"$\Q$-gonality", lambda b: r'$%s$'%(b[0]) if b[0] == b[1] else r'$%s \le \gamma \le %s$'%(b[0],b[1]), align="center", short_title="Q-gonality"),
+        # STAGED: enable when gps_shimura.cm_discriminants is populated (see shimcurve_tickets T15)
         #CheckCol("cm_discriminants", "shimcurve.cm_discriminants", "CM points", align="center"),
         ProcessedCol("conductor", "ag.conductor", "Conductor", factored_conductor, align="center", mathmode=True, default=False),
         CheckCol("simple", "shimcurve.simple", "Simple", default=False),
@@ -286,6 +287,7 @@ shimcurve_columns = SearchColumns(
         CheckCol("pointless", "shimcurve.local_obstruction", "Local obstruction", default=False),
         ProcessedCol("generators", "shimcurve.level_structure", r"$N_{B^{\times}}(O) \ltimes \operatorname{GL}_2(\mathbb{Z}/N\mathbb{Z})$-generators", lambda gens: ", ".join(r"$ \langle %s+%si+%sj+%sk, \begin{bmatrix}%s&%s\\%s&%s\end{bmatrix}$" % tuple(g) for g in gens) if gens else "trivial subgroup", short_title="generators", default=False),
     ],
+    # STAGED: cm_discriminants download variant; enable with the CM-points column (see shimcurve_tickets T15)
     #db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "cm_discriminants", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
     db_cols=["label", "name", "level", "index", "discB", "discO", "deg_mu", "genus", "rank", "q_gonality_bounds", "conductor", "simple", "squarefree", "is_coarse", "dims", "mults", "models", "pointless", "num_known_degree1_points", "generators"])
 
@@ -589,6 +591,7 @@ def shimcurve_search(info, query):
     parse_ints(info, query, "nu6")
     if not info.get("points_type"): # default, which is non-cuspidal
         parse_ints(info, query, "points", qfield="num_known_degree1_noncusp_points")
+    # STAGED: enable when num_known_degree1_noncm_points is populated (see shimcurve_tickets T15)
     #elif info["points_type"] == "noncm":
     #    parse_ints(info, query, "points", qfield="num_known_degree1_noncm_points")
     elif info["points_type"] == "all":
@@ -597,6 +600,7 @@ def shimcurve_search(info, query):
     parse_bool(info, query, "simple")
     parse_bool(info, query, "squarefree")
     parse_bool(info, query, "is_coarse")
+    # STAGED: enable when gps_shimura.cm_discriminants is populated (see shimcurve_tickets T15)
     #if "cm_discriminants" in info:
     #    if info["cm_discriminants"] == "yes":
     #        query["cm_discriminants"] = {"$ne": []}
@@ -750,6 +754,7 @@ class ShimCurveSearchArray(SearchArray):
             example="1",
             example_span="1,3-5",
         )
+        # STAGED: enable when the factorization (fiber-product) column is populated (see shimcurve_tickets T27)
         #factor = TextBox(
         #    name="factor",
         #    knowl="shimcurve.fiber_product",
@@ -780,6 +785,7 @@ class ShimCurveSearchArray(SearchArray):
             label="Squarefree",
             example_col=True,
         )
+        # STAGED: enable when gps_shimura.cm_discriminants is populated (see shimcurve_tickets T15)
         #cm_opts = ([('', ''), ('yes', 'rational CM points'), ('no', 'no rational CM points')]
         #           + [('-4,-16', 'CM field Q(sqrt(-1))'), ('-3,-12,-27', 'CM field Q(sqrt(-3))'), ('-7,-28', 'CM field Q(sqrt(-7))')]
         #           + [('-%d'%d, 'CM discriminant -%d'%d) for d in [3,4,7,8,11,12,16,19,27,38,43,67,163]])
@@ -798,6 +804,7 @@ class ShimCurveSearchArray(SearchArray):
             example_col=True,
             example_span="",
         )
+        # STAGED: the noncm option below needs num_known_degree1_noncm_points (see shimcurve_tickets T15)
         points_type = SelectBox(
             name="points_type",
             options=[#('noncm', 'non-CM'),
@@ -842,6 +849,7 @@ class ShimCurveSearchArray(SearchArray):
             [nu2, nu3],
             [nu4, nu6],
             [gonality, simple],
+            # STAGED rows below (cm_discriminants / points / obstructions boxes): enable with those search boxes (see shimcurve_tickets T15)
             #[squarefree, cm_discriminants],
             [covers, covered_by],
             #[is_coarse, family],
@@ -855,6 +863,7 @@ class ShimCurveSearchArray(SearchArray):
             [level, index, discB, discO, deg_mu], 
             [genus, rank, genus_minus_rank, gonality],
             [nu2, nu3, nu4, nu6],
+            # STAGED rows below (cm_discriminants / factor boxes): enable with those search boxes (see shimcurve_tickets T15)
             #[simple, squarefree, cm_discriminants, factor, covers],
             #[simple, squarefree, cm_discriminants, covers],
             [simple, squarefree, covers, covered_by],
