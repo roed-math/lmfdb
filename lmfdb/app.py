@@ -22,6 +22,7 @@ from sage.all import cached_function
 
 from .logger import critical
 from .homepage import load_boxes, contribs
+from .schema_refresh import schema_refresher
 
 LMFDB_VERSION = "LMFDB Release 1.2.1"
 
@@ -341,6 +342,21 @@ def get_menu_cookie():
     g.show_menu = str(request.cookies.get('showmenu')) != "False"
 
 ##############################
+#      Schema refreshing     #
+##############################
+
+
+@app.before_request
+def refresh_schema_if_changed():
+    """
+    Pick up schema changes announced on psycodict's LISTEN/NOTIFY channel, so
+    that added or dropped columns and tables become visible to this worker
+    without a restart.  A non-blocking poll (and a no-op when psycodict does
+    not provide the notification API).
+    """
+    schema_refresher.check()
+
+##############################
 #       Top-level pages      #
 ##############################
 
@@ -383,7 +399,7 @@ def alive():
     a basic health check
     """
     from . import db
-    if db.is_alive():
+    if (getattr(db, "_is_alive", None) or db.is_alive)():
         return "LMFDB!"
     else:
         abort(503)
@@ -395,7 +411,7 @@ def statshealth():
     a health check on the stats pages
     """
     from . import db
-    if db.is_alive():
+    if (getattr(db, "_is_alive", None) or db.is_alive)():
         tc = app.test_client()
         for url in ['/NumberField/stats',
                     '/ModularForm/GL2/Q/holomorphic/stats',
@@ -425,7 +441,7 @@ def info():
     output += "HOSTNAME = %s\n\n" % gethostname()
     output += "# PostgreSQL info\n"
     from . import db
-    if not db.is_alive():
+    if not (getattr(db, "_is_alive", None) or db.is_alive)():
         output += "db is offline\n"
     else:
         conn_str = "%s" % db.conn
