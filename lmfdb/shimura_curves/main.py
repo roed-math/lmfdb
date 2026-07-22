@@ -557,7 +557,7 @@ def shimcurve_magma_download(label):
 
 @shimcurve_page.route("/download_to_sage/<label>")
 def shimcurve_sage_download(label):
-    return ShimCurve_download().download_Shimura_curve(label, lang="sage")
+    return ShimCurve_download().download_shimura_curve(label, lang="sage")
 
 @shimcurve_page.route("/download_to_text/<label>")
 def shimcurve_text_download(label):
