@@ -937,12 +937,12 @@ class NFDownloader(Downloader):
                  # discriminant is a plain column that can be selected as an axis.
                  "computed_cols": {
                      "disc": {
-                         "label": "Discriminant",
+                         "label": "discriminant",
                          "cols": ["disc_sign", "disc_abs"],
                          "func": lambda r: r["disc_sign"] * r["disc_abs"],
                      },
                      "disc_abs": {
-                         "label": "Absolute discriminant",
+                         "label": "absolute discriminant",
                          "cols": ["disc_abs"],
                          "func": lambda r: r["disc_abs"],
                      },
