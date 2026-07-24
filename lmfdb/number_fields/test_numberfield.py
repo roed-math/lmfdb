@@ -150,13 +150,13 @@ class NumberFieldTest(LmfdbTest):
         # which is not a stored column; this used to 500 with KeyError: 'disc'.
         page = self.tc.get('/NumberField/?search_type=Diagram&degree=2&count=100').get_data(as_text=True)
         assert 'my_dataviz' in page
-        assert 'Discriminant' in page
+        assert 'discriminant' in page
         # 2.0.3.1 is the field of discriminant -3, so its x-coordinate is -3
         assert '"label": "2.0.3.1"' in page and '"x": "-3"' in page
         # The computed absolute-discriminant axis also works
         page2 = self.tc.get('/NumberField/?hst=Diagram&x-axis=disc_abs&y-axis=rd&degree=3&count=50').get_data(as_text=True)
         assert 'my_dataviz' in page2
-        assert 'Absolute discriminant' in page2
+        assert 'absolute discriminant' in page2
 
     def test_errors(self):
         self.check_args('NumberField/18.0.10490638424...4432.1/download/sage', 'Invalid label')
