@@ -384,12 +384,12 @@ class WebShimCurve(WebObj):
         if self.is_coarse:
             return r"yes"
         else:
-            return r"no $\quad$ (see %s for the level structure with $-I$)"%(shimcurve_link(self.coarse_label))
+            return r"no $\quad$ (see %s for the level structure with $-I$)"%(shimcurve_link(self.full_coarse_label))
 
     @lazy_attribute
     def quadratic_refinements(self):
         if self.is_coarse:
-            qtwists = list(self.table.search({'coarse_label':self.label}, 'label'))
+            qtwists = list(self.table.search({'mu_label': self.mu_label, 'coarse_label': self.coarse_label}, 'label'))
             if len(qtwists) > 1:
                 return r"%s"%(', '.join([shimcurve_link(label) for label in qtwists if label != self.label]))
             else:
@@ -406,9 +406,14 @@ class WebShimCurve(WebObj):
         return factored_conductor(self.conductor)
 
     @lazy_attribute
+    def full_coarse_label(self):
+        # The coarse_label column stores only the suffix level.index.genus.class.num;
+        # tables keyed by curve store the full mu_label.coarse_label form.
+        return self.mu_label + r"." + self.coarse_label
+
+    @lazy_attribute
     def models_to_display(self):
-        coarse_label = self.mu_label + r"." + self.coarse_label
-        return list(db.shimcurve_models.search({"shimcurve": coarse_label, "dont_display": False}, ["equation", "number_variables", "model_type", "smooth"]))
+        return list(db.shimcurve_models.search({"shimcurve": self.full_coarse_label, "dont_display": False}, ["equation", "number_variables", "model_type", "smooth"]))
 
     @lazy_attribute
     def formatted_models(self):
@@ -416,8 +421,7 @@ class WebShimCurve(WebObj):
 
     @lazy_attribute
     def models_count(self):
-        coarse_label = self.mu_label + r"." + self.coarse_label
-        return db.shimcurve_models.count({"shimcurve": coarse_label})
+        return db.shimcurve_models.count({"shimcurve": self.full_coarse_label})
 
     @lazy_attribute
     def has_more_models(self):
@@ -428,7 +432,7 @@ class WebShimCurve(WebObj):
         # Ensure domain model and map have dont_display = False
         domain_types = [1] + [m["model_type"] for m in self.models_to_display]
         return list(db.shimcurve_modelmaps.search(
-            {"domain_label": self.coarse_label,
+            {"domain_label": self.full_coarse_label,
              "dont_display": False,
              "domain_model_type":{"$in": domain_types}},
             ["degree", "domain_model_type", "codomain_label", "codomain_model_type",
@@ -564,7 +568,7 @@ class WebShimCurve(WebObj):
 
     @lazy_attribute
     def modelmaps_count(self):
-        return db.shimcurve_modelmaps.count({"domain_label": self.coarse_label})
+        return db.shimcurve_modelmaps.count({"domain_label": self.full_coarse_label})
 
     @lazy_attribute
     def has_more_modelmaps(self):
@@ -750,20 +754,20 @@ class WebShimCurve(WebObj):
 
     @lazy_attribute
     def known_degree1_points(self):
-        return db.shimcurve_points.count({"curve_label": self.coarse_label, "degree": 1})
+        return db.shimcurve_points.count({"curve_label": self.full_coarse_label, "degree": 1})
 
     @lazy_attribute
     def known_degree1_noncm_points(self):
-        return db.shimcurve_points.count({"curve_label": self.coarse_label, "degree": 1, "cm": 0})
+        return db.shimcurve_points.count({"curve_label": self.full_coarse_label, "degree": 1, "cm": 0})
 
     @lazy_attribute
     def known_low_degree_points(self):
-        return db.shimcurve_points.count({"curve_label": self.coarse_label, "degree": {"$gt": 1}})
+        return db.shimcurve_points.count({"curve_label": self.full_coarse_label, "degree": {"$gt": 1}})
 
     @lazy_attribute
     def db_points(self):
         return list(db.shimcurve_points.search(
-            {"curve_label": self.coarse_label},
+            {"curve_label": self.full_coarse_label},
             sort=["degree", "j_height"],
             projection=["Clabel","cm","isolated","jinv","j_field","j_height",
                         "jorig","residue_field","degree","coordinates"]))

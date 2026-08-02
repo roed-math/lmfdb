@@ -630,8 +630,9 @@ def shimcurve_search(info, query):
         else:
             if "-" in lmfdb_label:
                 # fine label
-                rec = db.gps_shimura_test.lookup(lmfdb_label, ["parents", "coarse_label"])
-                parents = [rec["coarse_label"]] + rec["parents"]
+                rec = db.gps_shimura_test.lookup(lmfdb_label, ["parents", "coarse_label", "mu_label"])
+                # coarse_label holds only the suffix; parents are full labels
+                parents = [rec["mu_label"] + "." + rec["coarse_label"]] + rec["parents"]
             else:
                 # coarse label
                 parents = db.gps_shimura_test.lookup(lmfdb_label, "parents")
@@ -1147,11 +1148,13 @@ def labels_page():
 
 @shimcurve_page.route("/data/<label>")
 def shimcurve_data(label):
-    coarse_label = db.gps_shimura_test.lookup(label, "coarse_label")
+    rec = db.gps_shimura_test.lookup(label, ["coarse_label", "mu_label"])
     bread = get_bread([(label, url_for_shimcurve_label(label)), ("Data", " ")])
     if not LABEL_RE.fullmatch(label):
         return abort(404)
-    if label == coarse_label:
+    # coarse_label holds only the suffix, so rebuild the full label before comparing
+    coarse_label = rec["mu_label"] + "." + rec["coarse_label"] if rec else None
+    if coarse_label is None or label == coarse_label:
         labels = [label]
     else:
         labels = [label, coarse_label]
