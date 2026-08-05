@@ -11,7 +11,7 @@ Process for making png images of group names for subgroup diagrams:
    (the images currently in gps_images were rendered at 120 dpi; dvipng's
    default of 100 dpi produces images that are ~17% smaller)
 
- - run load-img.py from this directory
+ - run load-imgs.py from this directory
 
 Incremental process (only render names missing from gps_images, e.g. after
 new groups/subgroups are added; see https://github.com/LMFDB/lmfdb/issues/7028):

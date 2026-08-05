@@ -13,25 +13,33 @@ import base64
 HOME = os.path.expanduser("~")
 sys.path.append(os.path.join(HOME, 'lmfdb'))
 from lmfdb import db
+# psycodict's own serializer: it escapes the delimiter, backslashes, newlines,
+# tabs and the null marker the way copy_from expects.
+from psycodict.encoding import copy_dumps
 
 existing = set(ent['label'] for ent in db.gps_images.search({}, ['label']))
 
-imdict = {}
-with open("prettyindex", "r") as fn:
-    for line in fn.readlines():
-        l = json.loads(line)
-        if l[1] in existing:
-            continue
-        fn2 = 'images/eq%d.png' % l[0]
-        imdict[l[1]] = 'data:image/png;base64,' + base64.b64encode(open(fn2, "rb").read()).decode("utf-8")
+# The whole upload file is built before the database is touched, so that a
+# missing or unreadable png aborts the run rather than loading a partial batch.
+count = 0
+with open("prettyindex", "r", encoding="utf-8") as fn:
+    with open("imageadder", "w", encoding="utf-8") as afile:
+        afile.write('label|image\n')
+        afile.write('text|text\n\n')
+        for line in fn:
+            num, label = json.loads(line)
+            if label in existing:
+                continue
+            existing.add(label)  # also guards against repeats in prettyindex
+            with open('images/eq%d.png' % num, "rb") as png:
+                image = 'data:image/png;base64,' + base64.b64encode(png.read()).decode("utf-8")
+            afile.write("|".join([copy_dumps(label, "text", sep="|"),
+                                  copy_dumps(image, "text", sep="|")]) + "\n")
+            count += 1
 
-print("Loaded %d new images" % len(imdict))
+print("Loaded %d new images" % count)
 
-with open("imageadder", "w") as afile:
-    afile.write('label|image\n')
-    afile.write('text|text\n\n')
-    for key, value in imdict.items():
-        afile.write(key.replace('\\', '\\\\') + '|' + value.replace('\\', '\\\\'))
-        afile.write('\n')
-
-db.gps_images.copy_from('imageadder')
+if count:
+    db.gps_images.copy_from('imageadder')
+else:
+    print("Nothing new to load; gps_images left untouched")

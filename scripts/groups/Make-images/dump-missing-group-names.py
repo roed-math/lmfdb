@@ -27,6 +27,7 @@ After running this, follow the same steps as in Readme:
 import sys
 import os
 import re
+import json
 from collections import Counter
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import macro_check
@@ -43,7 +44,9 @@ if problems:
 HOME = os.path.expanduser("~")
 sys.path.append(os.path.join(HOME, 'lmfdb'))
 from lmfdb import db
-from psycopg2.sql import SQL
+# Not psycopg2/psycopg directly: composables handed to db._execute must come
+# from whichever driver the installed psycodict uses (both may be importable).
+from lmfdb.utils.psycopg_compat import SQL
 
 refcounts = Counter()
 for query in [
@@ -66,10 +69,15 @@ print("%d referenced tex names, %d missing from gps_images (%d references)"
 # derail the whole latex run.
 defined = macro_check.eqtex_macros()
 standard = macro_check.STANDARD_MACROS
-skipped = [name for name in missing
-           if any(m not in defined and m not in standard for m in re.findall(r"\\([A-Za-z]+)", name))]
+renderable, skipped = [], []
+for name in missing:
+    macros = re.findall(r"\\([A-Za-z]+)", name)
+    if all(m in defined or m in standard for m in macros):
+        renderable.append(name)
+    else:
+        skipped.append(name)
+missing = renderable
 if skipped:
-    missing = [name for name in missing if name not in set(skipped)]
     print("SKIPPING %d names using macros undefined in images/eq.tex (fix the tex names or the preamble):"
           % len(skipped))
     for name in skipped[:20]:
@@ -78,12 +86,14 @@ if skipped:
         print("    ... (%d more)" % (len(skipped) - 20))
 
 count = 0
-with open("eqguts.tex", "w") as eqguts:
-    with open("prettyindex", "w") as prettyindex:
+with open("eqguts.tex", "w", encoding="utf-8") as eqguts:
+    with open("prettyindex", "w", encoding="utf-8") as prettyindex:
         for p in missing:
-            pp = p.replace('\\', '\\\\')
-            eqguts.write('$' + str(p) + '$\n')
+            eqguts.write('$' + p + '$\n')
             count += 1
-            prettyindex.write('[%d, "%s"]\n' % (count, pp))
+            # json rather than hand-rolled quoting: it escapes quotes, tabs and
+            # control characters as well as the backslashes of the tex name.
+            json.dump([count, p], prettyindex, ensure_ascii=False)
+            prettyindex.write("\n")
 
 print("Max count is %d" % count)
