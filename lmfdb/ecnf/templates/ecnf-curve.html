@@ -249,6 +249,15 @@ cellpadding="5";
         </td>
         </tr>
 
+{% if ec.szpiro_ratio %}
+        <tr>
+        <td>{{ KNOWL('ec.szpiro_ratio', title='Szpiro ratio') }}:</td>
+	<td>$\sigma$</td>
+	<td>&approx;</td>
+        <td colspan="3">${{ ec.szpiro_ratio }}$</td>
+        </tr>
+{% endif %}
+
 </table>
 
 

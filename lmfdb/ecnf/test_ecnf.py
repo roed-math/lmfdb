@@ -1,4 +1,26 @@
+import os
+import re
+
 from lmfdb.tests import LmfdbTest
+
+
+def szpiro_generator():
+    """The scripts/ecnf/generate_szpiro_ratio.py module, loaded by path.
+
+    ``scripts`` is not part of the lmfdb package, so it cannot simply be
+    imported; ``None`` is returned when it is absent (e.g. when only the
+    package has been installed).
+    """
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir,
+                        "scripts", "ecnf", "generate_szpiro_ratio.py")
+    if not os.path.exists(path):
+        return None
+    spec = importlib.util.spec_from_file_location("generate_szpiro_ratio", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 class EllCurveTest(LmfdbTest):
 
@@ -120,6 +142,98 @@ class EllCurveTest(LmfdbTest):
         assert '73.1-a1' in L.get_data(as_text=True)
         L = self.tc.get('/EllipticCurve/?start=0&torsion=1&isodeg=2')
         assert 'No matches' in L.get_data(as_text=True)
+
+    def test_szpiro_ratio(self):
+        r"""
+        Test that the Szpiro ratio is displayed, searchable and sortable
+        once ec_nfcurves has the szpiro_ratio column, and that the pages
+        still work (without offering it) while the column is missing
+        """
+        from lmfdb.ecnf.main import HAVE_SZPIRO_RATIO
+        # 2.2.5.1-31.1-a1 has Szpiro ratio exactly 1 (Norm(D_min) = Norm(N) = 31);
+        # 3.3.1369.1-1.1-a1 has everywhere good reduction, so no ratio at all.
+        curve_url = '/EllipticCurve/2.2.5.1/31.1/a/1'
+        egr_url = '/EllipticCurve/3.3.1369.1/1.1/a/1'
+        t = self.tc.get(curve_url).get_data(as_text=True)
+        assert 'Conductor norm' in t
+
+        if not HAVE_SZPIRO_RATIO:
+            # Compatibility branch: the pages load and offer no ratio anywhere.
+            # A szpiro_ratio constraint is deliberately ignored rather than
+            # raising, so the search below only shows that the page still works;
+            # it says nothing about filtering, which needs the column.
+            assert 'Szpiro ratio' not in t
+            assert 'Szpiro ratio' not in self.tc.get('/EllipticCurve/').get_data(as_text=True)
+            assert self.tc.get('/EllipticCurve/?field=2.2.5.1&szpiro_ratio=0.5-1.5').status_code == 200
+            return
+
+        # Displayed on the curve page, with the right value.  Match the label
+        # text rather than the knowl markup around it: KNOWL() renders a plain
+        # label until ec.szpiro_ratio has been created, and an anchor after.
+        row = re.search(r'Szpiro ratio.*?</tr>', t, re.DOTALL)
+        assert row is not None, 'no Szpiro ratio row on %s' % curve_url
+        assert re.search(r'\$\s*1\.0\s*\$', row.group(0)), row.group(0)
+        # Omitted for a curve with everywhere good reduction, where it is undefined.
+        assert 'Szpiro ratio' not in self.tc.get(egr_url).get_data(as_text=True)
+
+        # A range containing 1.0 finds the curve and a disjoint range does not:
+        # the pair is what shows that the constraint reaches the query at all.
+        t = self.tc.get('/EllipticCurve/?field=2.2.5.1&szpiro_ratio=0.5-1.5').get_data(as_text=True)
+        assert curve_url in t
+        t = self.tc.get('/EllipticCurve/?field=2.2.5.1&szpiro_ratio=1.1-1.5').get_data(as_text=True)
+        assert curve_url not in t
+
+        # Sorting by the ratio works, and shows the column even though it is
+        # off by default: without the sort its results-table header carries
+        # display:none (it is always in the html, for the column selector).
+        L = self.tc.get('/EllipticCurve/?field=2.2.5.1&sort_order=szpiro_ratio')
+        assert L.status_code == 200
+        th = re.search(r'<th class="col-szpiro_ratio" style="([^"]*)"', L.get_data(as_text=True))
+        assert th is not None, 'no Szpiro ratio column in the results table'
+        assert 'display:none' not in th.group(1), th.group(0)
+
+    def test_szpiro_ratio_generator(self):
+        r"""
+        Test the helpers of scripts/ecnf/generate_szpiro_ratio.py, which
+        do not depend on ec_nfcurves having the szpiro_ratio column
+        """
+        gen = szpiro_generator()
+        if gen is None:
+            self.skipTest("scripts/ecnf/generate_szpiro_ratio.py is not in this checkout")
+        # 2.2.5.1-31.1-a1: Norm(D_min) = Norm(N) = 31, so sigma = 1 exactly.
+        assert gen.szpiro_ratio(31, 31) == 1.0
+        # Everywhere good reduction: both norms are 1 and sigma is undefined.
+        assert gen.szpiro_ratio(1, 1) is None
+        # Trivial conductor with nontrivial minimal discriminant is impossible.
+        with self.assertRaises(ValueError):
+            gen.szpiro_ratio(2, 1)
+        with self.assertRaises(ValueError):
+            gen.szpiro_ratio(0, 31)
+
+        # A synthetic non-minimal row, modelled on 2.0.31.1-256.7-a1: the
+        # stored model is non-minimal at (2,w), so its discriminant norm is
+        # normp^12 = 2^12 times the norm of the minimal discriminant, and both
+        # formulas must give Norm(D_min) = 2^4 * 2^10.
+        rec = {'label': 'test.curve',
+               'non_min_p': ['(2,w)'],
+               'local_data': [{'p': '(2,w)', 'normp': 2, 'ord_disc': 4},
+                              {'p': '(2,w+1)', 'normp': 2, 'ord_disc': 10}],
+               'normdisc': -2**26}
+        assert gen.min_disc_norm(rec) == 2**14
+        assert gen.min_disc_norm_from_normdisc(rec) == 2**14
+
+        # Local data missing for a prime listed in non_min_p: say which curve
+        # and which prime rather than failing on a StopIteration.
+        broken = dict(rec, local_data=rec['local_data'][1:])
+        with self.assertRaises(ValueError) as cm:
+            gen.min_disc_norm_from_normdisc(broken)
+        assert 'test.curve' in str(cm.exception) and '(2,w)' in str(cm.exception)
+
+        # normdisc not divisible by normp^12 at a non-minimal prime.
+        broken = dict(rec, normdisc=-(2**26 + 1))
+        with self.assertRaises(ValueError) as cm:
+            gen.min_disc_norm_from_normdisc(broken)
+        assert 'test.curve' in str(cm.exception)
 
     def test_cm_disc_search(self):
         r"""
