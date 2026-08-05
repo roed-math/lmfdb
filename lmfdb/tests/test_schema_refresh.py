@@ -51,9 +51,23 @@ class StubDB:
         self.refreshes += 1
 
 
+class RecordingRefresher(SchemaRefresher):
+    """
+    Records the reason computed for each refresh, which is where the payload
+    handling (channel filtering, deduplication, ordering) is observable.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reasons = []
+
+    def _refresh(self, reason):
+        self.reasons.append(reason)
+        super()._refresh(reason)
+
+
 def test_unavailable_psycodict_is_a_noop():
     # An object with neither listener() nor refresh_tables(), like psycodict
-    # before 1.0: the refresher must disable itself, not crash the request.
+    # before 1.0: the refresher must stay a cheap no-op, not crash the request.
     refresher = SchemaRefresher(db=object())
     refresher.check()
     refresher.check()
@@ -72,16 +86,47 @@ def test_subscribe_then_notify():
     # A quiet poll does not refresh.
     refresher.check()
     assert db.refreshes == 1
-    # One batch of notifications = one refresh; other channels are ignored.
+    # One batch of notifications = one refresh.
     db.pending = [
         (SCHEMA_CHANNEL, "nf_fields"),
         (SCHEMA_CHANNEL, "ec_curvedata"),
-        ("some_other_channel", "ignored"),
     ]
     refresher.check()
     assert db.refreshes == 2
     refresher.check()
     assert db.refreshes == 2
+
+
+def test_other_channels_do_not_refresh():
+    db = StubDB()
+    refresher = SchemaRefresher(db=db)
+    refresher.check()
+    assert db.refreshes == 1
+    # Nothing on our channel, so nothing to do: a batch made up entirely of
+    # someone else's notifications must not trigger a refresh.
+    db.pending = [("some_other_channel", "ignored")]
+    refresher.check()
+    assert db.refreshes == 1
+
+
+def test_batch_collapses_duplicates_and_filters_channels():
+    db = StubDB()
+    refresher = RecordingRefresher(db=db)
+    refresher.check()
+    assert refresher.reasons == ["subscribed to schema-change notifications"]
+    # A burst naming the same table repeatedly, mixed with another channel's
+    # traffic: one refresh, and the reason names each affected table once, in
+    # sorted order, with the other channel's payload nowhere in sight.
+    db.pending = [
+        (SCHEMA_CHANNEL, "nf_fields"),
+        (SCHEMA_CHANNEL, "ec_curvedata"),
+        (SCHEMA_CHANNEL, "nf_fields"),
+        ("some_other_channel", "gps_groups"),
+        (SCHEMA_CHANNEL, "ec_curvedata"),
+    ]
+    refresher.check()
+    assert db.refreshes == 2
+    assert refresher.reasons[-1] == "schema changed for ec_curvedata, nf_fields"
 
 
 def test_subscription_failure_backs_off_then_recovers():

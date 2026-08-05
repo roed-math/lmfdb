@@ -30,10 +30,15 @@ policies chosen here:
 
 - **No background thread.**  Web workers spend their life handling requests,
   so polling at request boundaries is both sufficient and free of the races a
-  refresh-from-another-thread would invite.  An idle worker can lag behind
-  until its next request, which is harmless: with no requests there are no
-  queries to fail.  A non-blocking poll on an idle connection is just a
-  socket read, so doing it every request costs nothing measurable.
+  refresh-from-another-thread would invite.  This assumes LMFDB's
+  single-threaded sync workers, where a request boundary is a moment with no
+  query in flight; the lock in :meth:`SchemaRefresher.check` keeps concurrent
+  callers from polling or refreshing simultaneously, but it does not
+  serialize a refresh against queries running in other requests, so it is not
+  by itself enough for a threaded or gevent server.  An idle worker can lag
+  behind until its next request, which is harmless: with no requests there
+  are no queries to fail.  A non-blocking poll on an idle connection is just
+  a socket read, so doing it every request costs nothing measurable.
 - **Reconnect with catch-up.**  If the listening connection is lost, any
   notifications sent before a new ``LISTEN`` is issued are gone (PostgreSQL
   delivers only what is sent after).  So the refresher backs off briefly,
@@ -48,7 +53,7 @@ policies chosen here:
   a single refresh.
 
 If psycodict does not provide the notification API (any release before 1.0),
-the refresher logs once and disables itself, so this module is safe to
+the refresher logs once and remains a no-op, so this module is safe to
 deploy against current psycodict.
 
 The refresher likewise disables itself, for the life of the process, when
@@ -79,8 +84,10 @@ class SchemaRefresher:
     Refresh ``db``'s table metadata when a schema change is announced.
 
     Drive it by calling :meth:`check` regularly -- the LMFDB app does so in a
-    ``before_request`` hook.  ``check`` never blocks and never raises, so it
-    cannot take a request down with it.
+    ``before_request`` hook.  The steady-state poll of an established listener
+    is non-blocking, and ``check`` never lets an exception reach the request,
+    so it cannot take a request down with it.  Establishing a listener and
+    refreshing metadata do talk to the database, and may block.
 
     INPUT:
 
@@ -100,6 +107,11 @@ class SchemaRefresher:
         self._logged_unavailable = False
         # before_request hooks may run concurrently under threaded or gevent
         # servers; one poller at a time is plenty, so extra callers just skip.
+        # This keeps two refreshers off the same listener -- it does not
+        # serialize refresh_tables() against queries running in other
+        # requests, so it is not on its own enough to share the database
+        # object across concurrent requests.  The design assumes LMFDB's
+        # single-threaded workers, where check() runs with nothing in flight.
         self._lock = threading.Lock()
 
     @property
