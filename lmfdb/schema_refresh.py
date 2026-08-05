@@ -20,9 +20,9 @@ psycodict provides the two halves of the remedy:
   ``db.listener()`` subscribes to that channel (roed314/psycodict#111).
 
 This module ties the two together for the website.  Each worker process owns
-a :class:`SchemaRefresher`, driven by a non-blocking ``check()`` from a
-``before_request`` hook: when a schema-change notification has arrived, the
-worker refreshes its table metadata before handling the request.
+a :class:`SchemaRefresher`, driven by ``check()`` from a ``before_request``
+hook: when a schema-change notification has arrived, the worker refreshes its
+table metadata before handling the request.
 
 psycodict deliberately ships the notification API without threads, callbacks
 or automatic reconnection, leaving those policies to the application.  The
@@ -56,8 +56,8 @@ If psycodict does not provide the notification API (any release before 1.0),
 the refresher logs once and remains a no-op, so this module is safe to
 deploy against current psycodict.
 
-The refresher likewise disables itself, for the life of the process, when
-the database is a hot standby: a server in recovery refuses ``LISTEN``
+The refresher does disable itself, for the life of the process, when the
+database is a hot standby: a server in recovery refuses ``LISTEN``
 outright (SQLSTATE 25006), and notifications cannot traverse physical
 replication anyway (``NOTIFY`` is not WAL-logged).  This is the situation
 for development copies of the website pointing at devmirror; they keep the
@@ -72,8 +72,8 @@ from logging import getLogger
 try:
     from psycodict.notifications import SCHEMA_CHANNEL
 except ImportError:
-    # psycodict without LISTEN/NOTIFY support; the refresher will disable
-    # itself, but the channel name is part of psycodict's contract either way.
+    # psycodict without LISTEN/NOTIFY support; the refresher will remain a
+    # no-op, but the channel name is part of psycodict's contract either way.
     SCHEMA_CHANNEL = "psycodict_schema"
 
 logger = getLogger("lmfdb.schema_refresh")
