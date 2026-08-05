@@ -376,7 +376,11 @@ def parse_cm_list(inp, query, qfield):
 Ra = PolynomialRing(QQ,'a')
 
 # The szpiro_ratio column is computed and uploaded by scripts/ecnf/generate_szpiro_ratio.py.
-# All uses are guarded by this flag so that the site keeps working until the column is added.
+# All uses are guarded by this flag, which is a startup-time compatibility guard: it is
+# evaluated once when this module is imported, so old-schema deployments keep working, but
+# the web workers must be restarted after the column has been added and populated so that
+# ecnf_columns, the search array and the sort choices below (also built at import time) are
+# rebuilt.  Refreshing the schema of a running worker is not enough.
 HAVE_SZPIRO_RATIO = "szpiro_ratio" in db.ec_nfcurves.search_cols
 
 ecnf_columns = SearchColumns([
