@@ -351,8 +351,9 @@ def refresh_schema_if_changed():
     """
     Pick up schema changes announced on psycodict's LISTEN/NOTIFY channel, so
     that added or dropped columns and tables become visible to this worker
-    without a restart.  A non-blocking poll (and a no-op when psycodict does
-    not provide the notification API).
+    without a restart.  Almost always just a non-blocking poll, and a no-op
+    when psycodict does not provide the notification API; subscribing and
+    refreshing do talk to the database, but happen only rarely.
     """
     schema_refresher.check()
 
