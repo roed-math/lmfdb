@@ -79,6 +79,17 @@ CREATE TABLE userdb.tokens (
 }
 
 
+def _recheck_permissions(db):
+    """
+    psycodict checks what the connection may do with the knowls and users
+    (``db._read_and_write_knowls``, ``db._read_and_write_userdb``) when it
+    connects, so tables created afterward are only taken into account once
+    it checks again, which reset_connection does (for the knowledge and user
+    databases too, if they exist already).
+    """
+    db.reset_connection()
+
+
 def _table_exists(db, name, schema="public"):
     return bool(db._execute(
         SQL("SELECT 1 FROM information_schema.tables WHERE table_schema = %s AND table_name = %s"),
@@ -91,6 +102,7 @@ def create_knowl_tables(db):
     Create the tables of the knowledge database (``kwl_knowls`` and
     ``kwl_locks``) and their indexes, unless they exist already.
     """
+    created = False
     with DelayCommit(db, silence=True):
         for name, creator in KNOWL_TABLES.items():
             if not _table_exists(db, name):
@@ -101,6 +113,9 @@ def create_knowl_tables(db):
                 else:
                     db._execute(SQL(KNOWL_INDEXES[2]))
                 print("Table %s created" % name)
+                created = True
+    if created:
+        _recheck_permissions(db)
 
 
 def create_user_tables(db):
@@ -108,12 +123,16 @@ def create_user_tables(db):
     Create the schema ``userdb`` and its tables ``users`` and ``tokens``,
     unless they exist already.
     """
+    created = False
     with DelayCommit(db, silence=True):
         db._execute(SQL("CREATE SCHEMA IF NOT EXISTS userdb"))
         for name, creator in USER_TABLES.items():
             if not _table_exists(db, name, schema="userdb"):
                 db._execute(SQL(creator))
                 print("Table userdb.%s created" % name)
+                created = True
+    if created:
+        _recheck_permissions(db)
 
 
 def create_tables(db):
