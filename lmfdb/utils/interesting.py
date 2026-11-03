@@ -1,5 +1,5 @@
 from flask import render_template
-from lmfdb.knowledge.knowl import knowldb
+from lmfdb_utils.knowledge.knowl import knowldb
 
 def interesting_knowls(category, table, url_for_label, label_col="label", regex=None, query={}, **kwds):
     # category might be something like ec.q

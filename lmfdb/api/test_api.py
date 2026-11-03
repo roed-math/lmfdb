@@ -127,8 +127,8 @@ class ApiTest(LmfdbTest):
         heading above the schema, rather than folded into the page title
         """
         from markupsafe import escape
-        from lmfdb.knowledge.knowl import Knowl
-        from lmfdb.knowledge.main import md, md_preprocess
+        from lmfdb_utils.knowledge.knowl import Knowl
+        from lmfdb_utils.knowledge.main import md, md_preprocess
 
         tbl = 'nf_fields'
         # The title and content live in the knowl database, so we ask for them

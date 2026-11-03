@@ -7,19 +7,29 @@
 # NEVER EVER change the fixed_salt!
 fixed_salt = '=tU\xfcn|\xab\x0b!\x08\xe3\x1d\xd8\xe8d\xb9\xcc\xc3fM\xe9O\xfb\x02\x9e\x00\x05`\xbb\xb9\xa7\x98'
 
-from lmfdb import db
+import logging
 from psycodict.base import PostgresBase
 from psycodict.encoding import Array
-from lmfdb.utils.psycopg_compat import SQL, Identifier, Placeholder
+from psycodict import SQL, Identifier, Placeholder
 from datetime import timedelta
-from lmfdb_utils.datetime_utils import utc_now_naive
-from lmfdb.logger import logger
+
+from ..lazy import LazyObject
+from ..datetime_utils import utc_now_naive
+from ..site import current_site
+
+logger = logging.getLogger(__name__)
 
 # Read about flask-login if you are unfamiliar with this UserMixin/Login
 from flask_login import UserMixin, AnonymousUserMixin
 
 class PostgresUserTable(PostgresBase):
-    def __init__(self):
+    """
+    The user accounts, stored in the table ``userdb.users`` of the website's
+    database (see :mod:`lmfdb_utils.schema`).
+    """
+    def __init__(self, db=None):
+        if db is None:
+            db = current_site().db
         PostgresBase.__init__(self, 'db_users', db)
         # never narrow down the rmin-rmax range, only increase it!
         self.rmin, self.rmax = -10000, 10000
@@ -42,7 +52,7 @@ class PostgresUserTable(PostgresBase):
         self._rw_userdb = False
         self._cols = self._username_full_name
 
-        checker = getattr(db, "_can_read_write_userdb", None) or db.can_read_write_userdb
+        checker = getattr(self._db, "_can_read_write_userdb", None) or self._db.can_read_write_userdb
         if not checker():
             return
         cur = self.conn.cursor()
@@ -267,7 +277,7 @@ class PostgresUserTable(PostgresBase):
         updator = SQL("UPDATE userdb.users SET color_scheme = %s WHERE username = %s")
         self._execute(updator, [new_color, uid])
 
-userdb = PostgresUserTable()
+userdb = LazyObject(PostgresUserTable, "The user database")
 
 
 class LmfdbUser(UserMixin):
@@ -382,9 +392,3 @@ class LmfdbAnonymousUser(AnonymousUserMixin):
     # property. To match the behavior of LmfdbUser, we make it callable always.
     def is_anonymous(self):
         return True
-
-if __name__ == "__main__":
-    print("Usage:")
-    print("add user")
-    print("remove user")
-    print("…")

@@ -1,0 +1,48 @@
+{% extends "lmfdb_utils/layout.html" %}
+
+{% block logo %}
+{% if ALPHA %}
+    <img src="{{ url_for('static', filename='images/lmfdb-logo-alpha.png') }}" />
+{% else %}
+{% if BETA %}
+    <img src="{{ url_for('static', filename='images/lmfdb-logo-beta.png') }}" />
+{% else %}
+    <img src="{{ url_for('static', filename='images/lmfdb-logo.png') }}" />
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block undertopright %}
+            <a href="{{ url_for('citation') }}" >Citation</a>
+              &middot;
+            <a href="{{ url_for('contact') }}" target="_blank">Feedback</a>
+              &middot;
+{% endblock %}
+
+{% block footer %}
+    {% if credit -%}
+      Data computed by {{ credit|safe }}.<br />
+    {%- endif %}
+
+    {% if support -%}
+      {{ support|safe }}<br/>
+    {%- endif %}
+    <h4 style="margin:5px;">{{shortthanks|safe}}</h4>
+    <div>
+      <a href="{{ url_for('contact') }}">Contact</a>
+      &middot;
+      <a href="{{ url_for('citation') }}">Citation</a>
+      &middot;
+      <a href="{{ url_for('license') }}">License</a>
+      &middot;
+      <a href="{{ url_for('acknowledgment') }}">Acknowledgments</a>
+      &middot;
+      <a href="{{ url_for('editorial_board') }}">Editorial Board</a>
+      &middot;
+      {{ current_source|safe }}
+      &middot;
+      {{ sage_version|safe }}
+      &middot;
+      {{ version|safe }}
+    </div>
+{% endblock %}

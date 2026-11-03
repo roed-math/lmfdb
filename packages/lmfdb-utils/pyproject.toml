@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lmfdb-utils"
 dynamic = ["version"]
-description = "Utilities for websites like the L-functions and modular forms database (lmfdb.org): search forms, results, downloads and statistics"
+description = "Utilities for websites like the L-functions and modular forms database (lmfdb.org): search forms, results, downloads, statistics, knowls and the page layout"
 readme = "README.md"
 license = "GPL-2.0-or-later"
 license-files = ["LICENSE"]
@@ -29,11 +29,16 @@ classifiers = [
 # install this package into Sage's Python (sage -pip install lmfdb-utils).
 # psycodict provides the query language that the search parsers produce;
 # the pgbinary extra installs the driver psycodict is built on (see
-# lmfdb-client for the version policy).
+# lmfdb-client for the version policy).  flask-login and bcrypt are for user
+# accounts, markdown for knowls, pyyaml for the sidebar and knowl exports.
 dependencies = [
+    "bcrypt",
     "flask",
+    "flask-login",
+    "markdown",
     "markupsafe",
     "psycodict[pgbinary]>=1.0.0rc1,<2",
+    "pyyaml",
     "werkzeug",
 ]
 
@@ -45,8 +50,13 @@ Homepage = "https://www.lmfdb.org"
 Source = "https://github.com/LMFDB/lmfdb/tree/main/packages/lmfdb-utils"
 Issues = "https://github.com/LMFDB/lmfdb/issues"
 
-[tool.setuptools]
-packages = ["lmfdb_utils"]
+# The templates and static folders count as (namespace) packages, so that
+# their files are included as package data
+[tool.setuptools.packages.find]
+include = ["lmfdb_utils*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.html", "*.css", "*.js", "*.gif", "*.png", "*.svg"]
 
 [tool.setuptools.dynamic]
 version = {attr = "lmfdb_utils.__version__"}

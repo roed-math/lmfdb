@@ -1,10 +1,9 @@
+"""
+The LMFDB's knowledge database is lmfdb-utils' (lmfdb_utils.knowledge, set up
+by lmfdb_utils.web.init_app in lmfdb/app.py).  ``lmfdb.knowledge.knowl`` is
+kept for scripts that import the knowledge database from there.
+"""
 
-from lmfdb.app import app
-from flask import Blueprint
+from lmfdb_utils.knowledge import knowledge_page
 
-knowledge_page = Blueprint("knowledge", __name__, template_folder='templates')
-
-from . import main
-assert main
-
-app.register_blueprint(knowledge_page, url_prefix="/knowledge")
+assert knowledge_page  # silence pyflakes

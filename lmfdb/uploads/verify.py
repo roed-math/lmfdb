@@ -13,7 +13,7 @@ upone, _ = os.path.split(here)
 uptwo, _ = os.path.split(upone)
 sys.path.append(uptwo)
 from lmfdb import db
-from lmfdb.users.main import Reviewer
+from lmfdb.users import Reviewer
 
 
 def verify_all():

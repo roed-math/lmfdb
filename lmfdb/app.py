@@ -2,14 +2,11 @@ from .config import current_configuration, root_lmfdb_path
 import os
 from socket import gethostname
 import time
-from urllib.parse import urlparse, urlunparse
-from datetime import datetime
 from flask import (
     Flask,
     abort,
     current_app,
     g,
-    make_response,
     redirect,
     render_template,
     request,
@@ -94,20 +91,17 @@ if app.debug:
 # moves the key together with the configuration file.
 app.secret_key = current_configuration().get_secret_key()
 
-# tell jinja to remove linebreaks
-app.jinja_env.trim_blocks = True
-
-# enable break and continue in jinja loops
-app.jinja_env.add_extension('jinja2.ext.loopcontrols')
-app.jinja_env.add_extension('jinja2.ext.do')
+# The templates, static files, style sheet, knowls and users shared with
+# other websites (see packages/lmfdb-utils/lmfdb_utils/web.py), using the
+# lmfdb.site.LMFDBSite installed by lmfdb/__init__.py.  Its context
+# processor (info, bread, title, BETA, ...) comes before the ones below,
+# which can therefore override it.
+from lmfdb_utils.web import init_app  # noqa: E402
+init_app(app)
 
 # the following context processor inserts
-#  * empty info={} dict variable
-#  * body_class = ''
-#  * bread = None for the default bread crumb hierarch
-#  * title = 'LMFDB'
-#  * meta_description, shortthanks, feedbackpage
-#  * DEBUG and BETA variables storing whether running in each mode
+#  * the LMFDB version number (shown in the footer)
+#  * shortthanks
 
 # try:
 #     # In order to support running under gunicorn with gevent workers,
@@ -121,68 +115,14 @@ app.jinja_env.add_extension('jinja2.ext.do')
 
 @app.context_processor
 def ctx_proc_userdata():
-    # insert an empty info={} as default
-    # set the body class to some default, blueprints should
-    # overwrite it with their name, using @<blueprint_object>.context_processor
-    # see http://flask.pocoo.org/docs/api/?highlight=context_processor#flask.Blueprint.context_processor
-    vars = {'info': {}, 'body_class': ''}
-
-    # insert the default bread crumb hierarchy
-    # overwrite this variable when you want to customize it
-    # For example, [ ('Bread', '.'), ('Crumb', '.'), ('Hierarchy', '.')]
-    vars['bread'] = None
-    from lmfdb.utils import CodeSnippet
-    vars['CodeSnippet'] = CodeSnippet
-    # default title
-    vars['title'] = r'LMFDB'
+    vars = {}
 
     # LMFDB version number displayed in footer
     vars['version'] = LMFDB_VERSION
 
-    # meta_description appears in the meta tag "description"
-    vars['meta_description'] = r'Welcome to the LMFDB, the database of L-functions, modular forms, and related objects. These pages are intended to be a modern handbook including tables, formulas, links, and references for L-functions and their underlying objects.'
     vars['shortthanks'] = r'This project is supported by <a href="%s">grants</a> from the US National Science Foundation, the UK Engineering and Physical Sciences Research Council, and the Simons Foundation.' % (url_for('acknowledgment') + "#sponsors")
-    vars['feedbackpage'] = r"https://docs.google.com/spreadsheet/viewform?formkey=dDJXYXBleU1BMTFERFFIdjVXVmJqdlE6MQ"
-
-    # debug mode?
-    vars['DEBUG'] = is_debug_mode()
-    vars['BETA'] = is_beta()
-    #vars['ALPHA'] = True # hardwired for alpha branch
-
-    def modify_url(**replace):
-        url = request.url
-        if url.startswith("https, "):
-            # Cocalc weirdness that lets them serve pages on https from within a project
-            url = url[7:]
-        urlparts = urlparse(url)
-        if "query_add" in replace:
-            assert "query" not in replace
-            if urlparts.query:
-                replace["query"] = replace.pop("query_add") + "&" + urlparts.query
-            else:
-                replace["query"] = replace.pop("query_add")
-        urlparts = urlparts._replace(**replace)
-        return urlunparse(urlparts)
-    vars['modify_url'] = modify_url
-    vars['zip'] = zip
-    from lmfdb.utils import pluralize
-    vars['pluralize'] = pluralize
 
     return vars
-
-# Harald suggested the following but it does not work
-#
-# create the sidebar from its yaml file and inject it into the jinja environment
-#from lmfdb.homepage import get_sidebar
-#app.jinja_env.globals['sidebar'] = get_sidebar()
-#
-# so instead we do this to ensure that the sidebar content is available to every page:
-
-
-@app.context_processor
-def inject_sidebar():
-    from .homepage import get_sidebar
-    return {"sidebar": get_sidebar()}
 
 ##############################
 # Bottom link to google code #
@@ -230,38 +170,6 @@ def link_to_current_source():
     return {'current_source': _current_source,
             'latest_changeset': _latest_changeset,
             'sage_version': 'SageMath version %s' % SAGE_VERSION}
-
-##############################
-#      Jinja formatters      #
-##############################
-
-# you can pass in a datetime.datetime python object and via
-# {{ <datetimeobject> | fmtdatetime }} you can format it inside a jinja template
-# if you want to do more than just the default, use it for example this way:
-# {{ <datetimeobject>|fmtdatetime('%H:%M:%S') }}
-
-
-@app.template_filter("fmtdatetime")
-def fmtdatetime(value, format='%Y-%m-%d %H:%M:%S'):
-    if isinstance(value, datetime):
-        return value.strftime(format)
-    else:
-        return "-"
-
-# You can use this formatter to turn newlines in a string into HTML line breaks
-
-
-@app.template_filter("nl2br")
-def nl2br(s):
-    return s.replace('\n', '<br/>\n')
-
-# You can use this formatter to encode a dictionary into a url string
-
-
-@app.template_filter('urlencode')
-def urlencode(kwargs):
-    from urllib.parse import urlencode
-    return urlencode(kwargs)
 
 ##############################
 #    Redirects and errors    #
@@ -328,18 +236,6 @@ def not_found_500(error):
 @app.errorhandler(503)
 def not_found_503(error):
     return render_template("503.html"), 503
-
-##############################
-#           Cookies          #
-##############################
-
-
-@app.before_request
-def get_menu_cookie():
-    """
-    sets cookie for show/hide sidebar
-    """
-    g.show_menu = str(request.cookies.get('showmenu')) != "False"
 
 ##############################
 #       Top-level pages      #
@@ -550,46 +446,6 @@ def robots_txt():
 @app.route("/humans.txt")
 def humans_txt():
     return render_template("acknowledgment.html", title="Acknowledgments")
-
-
-@app.context_processor
-def add_colors():
-    # FIXME:
-    # - the template should use global variable g.color
-    # - try to get the color from
-    #       - the cookie
-    #       - from the config file
-    # - remove cookie at logout (see line 307 of users/main)
-    # - add cookie at login or when a color change happens (see line 175 of users/main)
-    from lmfdb_utils.color import all_color_schemes
-    color = request.args.get('color')
-    if color and color.isdigit():
-        color = int(color)
-    if color not in all_color_schemes:
-        color = None
-    if color is None:
-        from flask_login import current_user
-        userid = current_user.get_id()
-        if userid is not None:
-            from .users.pwdmanager import userdb
-            color = userdb.lookup(userid).get('color_scheme')
-        if color not in all_color_schemes:
-            color = None
-        if color is None:
-            color = current_configuration().get_color()
-    return {"color": all_color_schemes[color].dict()}
-
-
-@app.route("/style.css")
-def css():
-    response = make_response(render_template("style.css"))
-    response.headers['Content-type'] = 'text/css'
-    # don't cache css file, if in debug mode.
-    if current_app.debug:
-        response.headers['Cache-Control'] = 'no-cache, no-store'
-    else:
-        response.headers['Cache-Control'] = 'public, max-age=600'
-    return response
 
 
 @app.route("/not_yet_implemented")

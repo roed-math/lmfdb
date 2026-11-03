@@ -1,7 +1,26 @@
+"""
+The sidebar menu, read from the YAML file named by the site's ``sidebar_file``
+(see :class:`~lmfdb_utils.site.Site`).
 
-import os
+The file maps keys (sorted to give the order of the sections) to sections::
+
+    1intro:
+      type: simple
+      heading:
+        title: Introduction
+      parts:
+        - title: Knowledge
+          url_for: "knowledge.index"
+
+Entries link to the endpoint given by ``url_for`` (with ``url_args``); an
+entry with ``status: beta`` is only shown on beta, one with ``status: future``
+is shown greyed out, and a section with ``users_only: true`` is only shown to
+logged in users (and on beta).
+"""
 import yaml
 from flask import url_for
+
+from .site import current_site
 
 def linked_name(item, level=""):
     """ take the dictionary describing a TOC entry and return the
@@ -40,16 +59,20 @@ def get_sidebar():
         the_sidebar = SideBar()
     return the_sidebar
 
-# The SideBar class, created by reading the file sidebar.yaml
+# The SideBar class, created by reading the site's sidebar file
 
 class SideBar():
     """
     Class for holding the sidebar content.
     """
-    def __init__(self):
-
-        _curdir = os.path.dirname(os.path.abspath(__file__))
-        self.toc_dic = yaml.load(open(os.path.join(_curdir, "sidebar.yaml")), Loader=yaml.FullLoader)
+    def __init__(self, filename=None):
+        if filename is None:
+            filename = current_site().sidebar_file
+        if filename is None:
+            self.toc_dic = {}
+        else:
+            with open(filename, encoding="utf-8") as F:
+                self.toc_dic = yaml.load(F, Loader=yaml.FullLoader) or {}
         self.main_headings = list(self.toc_dic)
         self.main_headings.sort()
         def heading(k): return linked_name(self.toc_dic[k]['heading'],'heading')

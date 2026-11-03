@@ -1,0 +1,20 @@
+{% extends "lmfdb_utils/base.html" %}
+
+{% block head_early %}
+    {% if not BETA %}
+      <!--reCAPTCHA-->
+      <script src="https://www.google.com/recaptcha/enterprise.js?render=6LchHWwpAAAAACFe52hZNEkUP5Bn5_0FfLiEuF3i&waf=session" async defer></script>
+    {% endif %}
+{% endblock %}
+
+{% block head_late %}
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-YVBFDNX374"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-YVBFDNX374');
+    </script>
+{% endblock %}

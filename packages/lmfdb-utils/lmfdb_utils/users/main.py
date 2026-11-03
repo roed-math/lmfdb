@@ -3,20 +3,17 @@
 # author: harald schilly <harald.schilly@univie.ac.at>
 
 import flask
+import logging
 from functools import wraps
-from lmfdb.app import app
-from flask import render_template, request, Blueprint, url_for, make_response
+from flask import render_template, request, url_for, make_response
 from flask_login import login_required, login_user, current_user, logout_user, LoginManager
-from lmfdb.utils import flash_error, to_dict
-from lmfdb.utils.uploader import Uploader
-from lmfdb.logger import logger
+from ..utilities import flash_error
+from ..site import current_site
 from markupsafe import Markup
 
-from lmfdb import db
-assert db
+from . import login_page
 
-
-login_page = Blueprint("users", __name__, template_folder='templates')
+logger = logging.getLogger(__name__)
 
 import re
 allowed_usernames = re.compile("^[a-zA-Z0-9._-]+$")
@@ -24,8 +21,6 @@ allowed_usernames = re.compile("^[a-zA-Z0-9._-]+$")
 login_manager = LoginManager()
 
 from .pwdmanager import userdb, LmfdbUser, LmfdbAnonymousUser
-
-base_url = "http://beta.lmfdb.org"
 
 @login_manager.user_loader
 def load_user(userid):
@@ -44,7 +39,6 @@ def get_username(uid):
 # globally define user properties and username
 
 
-@app.context_processor
 def ctx_proc_userdata():
     userdata = {}
     userdata['user_can_write'] = userdb.can_read_write_userdb()
@@ -122,9 +116,8 @@ def info():
     info['logout'] = url_for(".logout")
     info['user'] = current_user
     info['next'] = request.referrer
-    from lmfdb_utils.color import all_color_schemes
     return render_template("user-info.html",
-                           all_colors=all_color_schemes.values(),
+                           all_colors=current_site().color_schemes().values(),
                            info=info, title="Userinfo",
                            bread=base_bread() + [("Myself", url_for(".info"))])
 
@@ -149,7 +142,7 @@ def profile(userid):
         flash_error("User %s does not exist", userid)
         return flask.redirect(url_for(".list"))
     bread = base_bread() + [(user.name, url_for('.profile', userid=user.get_id()))]
-    from lmfdb.knowledge.knowl import knowldb
+    from ..knowledge.knowl import knowldb
     userknowls = knowldb.search(author=userid, sort=['title'])
     return render_template("user-detail.html", user=user,
                            title="%s" % user.name, bread=bread, userknowls=userknowls)
@@ -228,6 +221,7 @@ def register(N=10):
     import random
     tokens = [str(random.randrange(int(1e20), int(1e21))) for _ in range(N)]
     userdb.create_tokens(tokens)
+    base_url = current_site().registration_url or request.host_url.rstrip("/")
     urls = ["%s%s" % (base_url, url_for(".register_token", token=t)) for t in tokens]
     resp = make_response('\n'.join(urls))
     resp.headers['Content-type'] = 'text/plain'
@@ -313,56 +307,3 @@ def logout():
 @admin_required
 def admin():
     return "success: only admins can read this!"
-
-
-@app.route("/restartserver")
-@admin_required
-def restart():
-    from subprocess import Popen, PIPE
-    from urllib.parse import urlparse
-    urlparts = urlparse(request.url)
-    if urlparts.netloc == "beta.lmfdb.org":
-        command = ['bash', '/home/lmfdb/restart-dev']
-    elif urlparts.netloc in ["prodweb1.lmfdb.xyz", "prodweb2.lmfdb.xyz"]:
-        command = ['bash', '/home/lmfdb/restart-web']
-    else:
-        command = None
-    if command:
-        out = Popen(command, stdout=PIPE, encoding='utf-8').communicate()[0]
-        return out.replace('\n', '<br>')
-    else:
-        return "Only supported in beta.lmfdb.org, prodweb1.lmfdb.xyz, and prodweb2.lmfdb.xyz"
-
-
-class Reviewer(Uploader):
-    """
-    This uploader is used to collect UploadSection objects from different sections of the LMFDB that use them.
-    """
-    def __init__(self):
-        from lmfdb.modular_curves.upload import Points, PointCompleteness, GonalityBounds, Models, UniversalEC, MultiKnowl
-        super().__init__([Points(), PointCompleteness(), GonalityBounds(), Models(), UniversalEC(), MultiKnowl()])
-
-
-@login_page.route("/uploads", methods=["GET", "POST"])
-@login_required
-def review_uploads():
-    uploader = Reviewer()
-    reviewer = current_user.is_knowl_reviewer()
-    if request.method == "POST":
-        info = to_dict(request.form)
-        uploader.review(info, reviewer, current_user.id)
-    else:
-        info = to_dict(request.args)
-
-    user_shown = info.get("user_shown", "" if reviewer else current_user.id)
-    reviewing = (reviewer and not user_shown)
-    results, statuses = uploader.show_uploads(info, reviewing, user_shown)
-
-    return render_template(
-        "user-uploads.html",
-        title="Review data uploads",
-        uploader=uploader,
-        statuses=statuses,
-        results=results,
-        user_shown=user_shown,
-    )

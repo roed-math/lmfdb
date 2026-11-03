@@ -16,7 +16,7 @@ uptwo, _ = os.path.split(upone)
 sys.path.append(uptwo)
 from lmfdb import db
 from psycodict.encoding import copy_dumps
-from lmfdb.users.main import Reviewer
+from lmfdb.users import Reviewer
 
 
 def process_all():

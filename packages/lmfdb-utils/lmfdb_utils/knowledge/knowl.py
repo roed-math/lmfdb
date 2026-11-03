@@ -1,8 +1,14 @@
-# the basic knowledge object, with database awareness, …
+"""
+The knowledge database: knowls, the short definitions and explanations that
+pop up when clicked, stored with their history in the ``kwl_knowls`` table of
+the website's database (see :mod:`lmfdb_utils.schema`).
+
+``knowldb`` gives access to the table; :class:`Knowl` is a single knowl.
+"""
 
 from collections import defaultdict
 from datetime import timedelta
-from lmfdb_utils.datetime_utils import utc_now_naive, ensure_naive_utc, datetime_to_timestamp_in_ms
+import logging
 import re
 import subprocess
 import time
@@ -11,15 +17,15 @@ import difflib
 from markupsafe import escape
 
 from psycodict.base import PostgresBase
-from psycodict import DelayCommit
-from lmfdb import db
-from lmfdb.app import is_beta
-from lmfdb.utils import code_snippet_knowl
-from lmfdb.config import current_configuration, root_lmfdb_path
-from lmfdb.users.pwdmanager import userdb
-from lmfdb.utils.psycopg_compat import SQL, Identifier, Placeholder
-from sage.all import cached_function
-from lmfdb.logger import logger
+from psycodict import DelayCommit, SQL, Identifier, Placeholder
+
+from ..lazy import LazyObject
+from ..datetime_utils import utc_now_naive, ensure_naive_utc, datetime_to_timestamp_in_ms
+from ..site import current_site
+from ..users.pwdmanager import userdb
+from ..utilities import code_snippet_knowl
+
+logger = logging.getLogger(__name__)
 
 # Timezone handling utilities for knowl system
 #
@@ -34,24 +40,6 @@ comment_knowl_re = re.compile(r"(.*)\.(\d+)\.comment$")
 coldesc_knowl_re = re.compile(r"columns.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)")
 tabledesc_knowl_re = re.compile(r"tables.([A-Za-z0-9_]+)")
 bottom_knowl_re = re.compile(r"(.*)\.bottom$")
-url_from_knowl = [
-    (re.compile(r'g2c\.(\d+\.[a-z]+\.\d+\.\d+)'), 'Genus2Curve/Q/{0}', 'Genus 2 curve {0}'),
-    (re.compile(r'g2c\.(\d+\.[a-z]+)'), 'Genus2Curve/Q/{0}', 'Genus 2 isogeny class {0}'),
-    (re.compile(r'gg\.(\d+)t(\d+)'), 'GaloisGroup/{0}t{1}', 'Galois group {0}T{1}'),
-    (re.compile(r'lattice\.(.*)'), 'Lattice/{0}', 'Lattice {0}'),
-    (re.compile(r'cmf\.(.*)'), 'ModularForm/GL2/Q/holomorphic/{0}', 'Newform {0}'),
-    (re.compile(r'nf\.(.*)'), 'NumberField/{0}', 'Number field {0}'),
-    (re.compile(r'ec\.q\.(.*)'), 'EllipticCurve/Q/{0}', 'Elliptic curve {0}'),
-    (re.compile(r'ec\.(\d+\.\d+\.\d+\.\d+)-(\d+\.\d+)-([a-z]+)(\d+)'), 'EllipticCurve/{0}/{1}/{2}/{3}', 'Elliptic curve {0}-{1}-{2}{3}'),
-    (re.compile(r'av\.fq\.(.*)'), 'Variety/Abelian/Fq/{0}', 'Abelian variety isogeny class {0}'),
-    (re.compile(r'st_group\.(.*)'), 'SatoTateGroup/{0}', 'Sato-Tate group {0}'),
-    (re.compile(r'belyi\.(.*)'), 'Belyi/{0}', 'Belyi Map {0}'),
-    (re.compile(r'hecke_algebra\.(.*)'), 'ModularForm/GL2/Q/HeckeAlgebra/{0}', 'Hecke algebra {0}'),
-    (re.compile(r'hecke_algebra_l_adic\.(.*)'), 'ModularForm/GL2/Q/HeckeAlgebra/{0}/2', 'l-adic Hecke algebra {0}'),
-    (re.compile(r'gal\.modl\.(.*)'), 'Representation/Galois/ModL/{0}', 'Mod-l Galois representation {0}'),
-    (re.compile(r'modlmf\.(.*)'), 'ModularForm/GL2/ModL/{0}', 'Mod-l modular form {0}'),
-    (re.compile(r'group\.abstract\.(.*)'), 'Groups/Abstract/{0}', 'Abstract group {0}'),
-]
 grep_extractor = re.compile(r'(.+?)([:|-])(\d+)([-|:])(.*)')
 # We need to convert knowl
 link_finder_re = re.compile(r"""(KNOWL(_INC)?\(|kid\s*=|knowl\s*=|th_wrap\s*\()\s*['"]([^'"]+)['"]|""")
@@ -112,7 +100,9 @@ def extract_typ(kid):
             return 0, None, None
     url = None
     name = None
-    for matcher, url_pattern, name_pattern in url_from_knowl:
+    for matcher, url_pattern, name_pattern in current_site().knowl_annotation_urls:
+        if isinstance(matcher, str):
+            matcher = re.compile(matcher)
         m = matcher.match(prelabel)
         if m:
             url = url_pattern.format(*m.groups())
@@ -139,28 +129,32 @@ def extract_defines(content):
 
 class CodeSearchUnavailable(RuntimeError):
     """
-    Raised when the LMFDB code cannot be searched for knowl references
+    Raised when the website's code cannot be searched for knowl references
     (for example because git is not installed).
     """
 
 
 def _git_grep(*args):
     """
-    Run ``git grep`` with the given arguments in the LMFDB checkout,
-    returning its output, or None if there are no matches.
+    Run ``git grep`` with the given arguments in the website's checkout
+    (``Site.source_root``), returning its output, or None if there are no
+    matches.
 
     Raises CodeSearchUnavailable if the search fails (git is missing, or
     the checkout is not a git repository), since then the absence of
     matches says nothing about the code.
     """
+    site = current_site()
+    if site.source_root is None:
+        raise CodeSearchUnavailable("The %s code cannot be searched for knowl references, since its location is not known" % site.name)
     try:
-        return subprocess.check_output(['git', 'grep'] + list(args), encoding='utf-8', cwd=root_lmfdb_path)
+        return subprocess.check_output(['git', 'grep'] + list(args), encoding='utf-8', cwd=site.source_root)
     except FileNotFoundError:
-        raise CodeSearchUnavailable("The LMFDB code cannot be searched for knowl references, since git is not installed")
+        raise CodeSearchUnavailable("The %s code cannot be searched for knowl references, since git is not installed" % site.name)
     except subprocess.CalledProcessError as err:
         if err.returncode == 1:  # no matches
             return None
-        raise CodeSearchUnavailable("The LMFDB code cannot be searched for knowl references (git grep failed)") from err
+        raise CodeSearchUnavailable("The %s code cannot be searched for knowl references (git grep failed)" % site.name) from err
 
 # We don't use the PostgresTable from psycodict.database
 # since it's aimed at constructing queries for mathematical objects
@@ -169,7 +163,9 @@ def _git_grep(*args):
 class KnowlBackend(PostgresBase):
     _default_fields = ['authors', 'cat', 'content', 'last_author', 'timestamp', 'title', 'status', 'type', 'links', 'defines', 'source', 'source_name'] # doesn't include id, _keywords, reviewer or review_timestamp
 
-    def __init__(self):
+    def __init__(self, db=None):
+        if db is None:
+            db = current_site().db
         PostgresBase.__init__(self, 'db_knowl', db)
         self._refresh_connection_capabilities()
         # we cache knowl titles for 10s
@@ -185,7 +181,7 @@ class KnowlBackend(PostgresBase):
         Fails closed: nothing is editable until the session has said so.
         """
         self._rw_knowldb = False
-        checker = getattr(db, "_can_read_write_knowls", None) or db.can_read_write_knowls
+        checker = getattr(self._db, "_can_read_write_knowls", None) or self._db.can_read_write_knowls
         self._rw_knowldb = checker()
 
     def _connection_reset(self):
@@ -249,7 +245,7 @@ class KnowlBackend(PostgresBase):
                 return None
 
         if beta is None:
-            beta = is_beta()
+            beta = current_site().is_beta()
         selecter = SQL("SELECT {0} FROM kwl_knowls WHERE id = %s AND status >= %s ORDER BY timestamp DESC LIMIT 1").format(SQL(", ").join(map(Identifier, fields)))
         if not beta:
             L = self._safe_execute(selecter, [ID, 1])
@@ -389,7 +385,7 @@ class KnowlBackend(PostgresBase):
         """
         Write the given knowls to a yaml file; you can then edit that file and reload it using ``yaml_import``.
         You should usually not change the first record in the output, which stores the time at which the export was performed; ``yaml_import`` uses it to detect knowls that have changed in the database since the export.
-        This function is not currently exposed to the web interface, so must be run manually (a connection to devmirror is sufficient, so it does not need to be run by an LMFDB editor).
+        This function is not currently exposed to the web interface, so must be run manually (with read access to the knowls).
 
         INPUT:
 
@@ -420,7 +416,7 @@ class KnowlBackend(PostgresBase):
     def yaml_import(self, filename, who, dryrun=False, straight_to_production=False, minor=True):
         """
         This function provides a mechanism for updating many knowls at once from a yaml file, as produced by ``yaml_export``.
-        It is not currently exposed to the web interface, so must be run manually by an LMFDB editor.
+        It is not currently exposed to the web interface, so must be run manually by an editor (with write access to the knowls).
 
         Knowls that have changed in the database since the yaml file was written are skipped (with a message), as are records that match the current database contents.  All changes are saved in a single transaction, so a failure partway through will not leave a partial import.  We suggest running with ``dryrun=True`` first to check the set of changes.
 
@@ -526,7 +522,7 @@ class KnowlBackend(PostgresBase):
         return {rec[0].split(".")[-1]: Knowl(rec[0], data=dict(zip(fields, rec))) for rec in L}
 
     def set_column_description(self, table, col, description):
-        uid = db.login()
+        uid = self._db.login()
         kid = f"columns.{table}.{col}"
         data = {
             'content': description,
@@ -551,7 +547,7 @@ class KnowlBackend(PostgresBase):
             return Knowl(L[0][0], data=dict(zip(fields, L[0])))
 
     def set_table_description(self, table, description):
-        uid = db.login()
+        uid = self._db.login()
         kid = f"tables.{table}"
         old = self.get_knowl(kid, beta=True)
         if old is None:
@@ -657,7 +653,7 @@ class KnowlBackend(PostgresBase):
             selecter = SQL("SELECT DISTINCT ON (id) id FROM kwl_knowls WHERE status >= %s AND type != %s AND links @> %s")
         else:
             if beta is None:
-                beta = is_beta()
+                beta = current_site().is_beta()
             if not beta:
                 # Have to make sure we do display references where the most recent positively reviewed knowl does reference this, but the most recent beta does not.
                 selecter = SQL("SELECT id FROM (SELECT DISTINCT ON (id) id, links FROM kwl_knowls WHERE status > %s AND type != %s ORDER BY id, timestamp DESC) knowls WHERE links @> %s")
@@ -756,7 +752,7 @@ class KnowlBackend(PostgresBase):
         OUTPUT:
 
         A list of dictionaries, with keys
-        - 'filename' -- full filename from LMFDB root
+        - 'filename' -- full filename from the root of the website's checkout
         - 'line' -- line number of match
         - 'code' -- a list of strings giving two lines of context around the match.
 
@@ -780,7 +776,7 @@ class KnowlBackend(PostgresBase):
         """
         OUTPUT:
 
-        - 0 if the knowl is not referenced in lmfdb code
+        - 0 if the knowl is not referenced in the website's code
         - 1 if the knowl is referenced and can be safely replaced using sed
             (does not occur without surrounding quotes)
         - -1 if the knowl is referenced but cannot be safely replaced.
@@ -859,7 +855,7 @@ class KnowlBackend(PostgresBase):
 
     def rename_hyphens(self, execute=False):
         selecter = SQL("SELECT DISTINCT ON (id) id FROM kwl_knowls WHERE id LIKE %s")
-        bad_names = [rec[0] for rec in db._safe_execute(selecter, ['%-%'])]
+        bad_names = [rec[0] for rec in self._safe_execute(selecter, ['%-%'])]
         if execute:
             for kid in bad_names:
                 new_kid = kid.replace('-', '_')
@@ -972,7 +968,7 @@ class KnowlBackend(PostgresBase):
         updater = SQL("UPDATE kwl_knowls SET authors = array_remove(authors, %s) WHERE id = %s")
         self._execute(updater, [uid, kid])
 
-knowldb = KnowlBackend()
+knowldb = LazyObject(KnowlBackend, "The knowledge database")
 
 def knowl_title(kid):
     return knowldb.knowl_title(kid)
@@ -988,7 +984,7 @@ def bad_knowl_id_reason(ID):
     """
     Check whether a string is a valid id for a new knowl.
 
-    Unlike ``lmfdb.knowledge.main.allowed_id`` (which is built on this function),
+    Unlike ``lmfdb_utils.knowledge.main.allowed_id`` (which is built on this function),
     this does not require a Flask request context, so it can be used from
     scripts such as ``yaml_import``.
 
@@ -1069,7 +1065,7 @@ def external_definition_link(site, xid):
 def knowl_definition(title,
                      clarification_kid=None,
                      kwargs={}):
-    from lmfdb_utils.web_display import display_knowl
+    from ..web_display import display_knowl
     if clarification_kid is None:
         if not kwargs:
             return f"<strong>{title}</strong>"
@@ -1083,17 +1079,31 @@ def knowl_definition(title,
                 return link
             except ValueError:
                 pass
-        return display_knowl("lmfdb.external_definitions", title, kwargs=kwargs, strong=True)
+        external_kid = current_site().external_definitions_knowl
+        if external_kid is not None:
+            return display_knowl(external_kid, title, kwargs=kwargs, strong=True)
+        # Without a knowl listing them, link to each definition after the term
+        links = []
+        for site, xid in kwargs.items():
+            try:
+                url, disp, fragment = external_definition_link(site, xid)
+            except ValueError:
+                continue
+            links.append(f'<a href="{url}">{escape(disp)}</a>' + (f" ({fragment})" if fragment else ""))
+        if links:
+            return f"<strong>{title}</strong> ({', '.join(links)})"
+        return f"<strong>{title}</strong>"
     else:
         return display_knowl(clarification_kid, title, strong=True)
 
 
-@cached_function
 def knowl_url_prefix():
     """
-    if one is running lmfdb in cocalc, front-end javascript (see: lmfdb.js) doesn't know your prefix isn't just a website domain.
+    The prefix of the website's addresses, which the javascript showing
+    knowls (see lmfdb.js) needs when the website is not served from the root
+    of its host (as in CoCalc).
     """
-    return current_configuration().get_url_prefix()
+    return current_site().url_prefix()
 
 # allowed qualities for knowls
 knowl_status_code = {'reviewed':1, 'beta':0, 'in progress': -1, 'deleted': -2}
@@ -1154,6 +1164,7 @@ class Knowl():
             if len(pieces) == 3:
                 # Column: the title is generated, so ignore the title passed in
                 self.title = f"Column {escape(pieces[2])} of table {escape(pieces[1])}"
+                db = current_site().db
                 if pieces[1] in db.tablenames:
                     self.coltype = db[pieces[1]].col_type.get(pieces[2], "DEFUNCT")
                 else:
@@ -1164,7 +1175,7 @@ class Knowl():
                 self.coltype = None
                 if not self.title:
                     self.title = f"Table {escape(pieces[1])}"
-                if pieces[1] not in db.tablenames and not self.title.endswith(" (DEFUNCT)"):
+                if pieces[1] not in current_site().db.tablenames and not self.title.endswith(" (DEFUNCT)"):
                     self.title += " (DEFUNCT)"
 
         if showing:
@@ -1259,7 +1270,11 @@ class Knowl():
         """
         if not self._last_author:
             return ""
-        return userdb.lookup(self._last_author)["full_name"]
+        try:
+            # a knowl loaded by a script may have an author without an account
+            return userdb.lookup(self._last_author).get("full_name") or self._last_author
+        except ValueError:
+            return self._last_author
 
     def exists(self, allow_deleted=False):
         return knowldb.knowl_exists(self.id, allow_deleted=allow_deleted)

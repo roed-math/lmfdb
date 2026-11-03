@@ -1,4 +1,4 @@
-# This Blueprint is about adding a Knowledge Base to the LMFDB website.
+# This Blueprint is about adding a Knowledge Base to the website.
 # referencing content, dynamically inserting information into the website, …
 #
 # This is more than just a web of entries in a wiki, because content is "transcluded".
@@ -11,28 +11,31 @@
 #
 # author: Harald Schilly <harald.schilly@univie.ac.at>
 
+import logging
 import string
 import re
 import json
 import time
 from collections import Counter, defaultdict
 from urllib.parse import urlencode
-from lmfdb.app import app, is_beta
-from flask import (abort, flash, jsonify, make_response,
+from flask import (abort, current_app, flash, jsonify, make_response,
                    redirect, render_template, render_template_string,
                    request, url_for)
 from markupsafe import Markup
 from flask_login import login_required, current_user
 from .knowl import CodeSearchUnavailable, Knowl, knowldb, knowl_title, knowl_exists, knowl_url_prefix, knowl_definition, external_definition_link, utc_now_naive, bad_knowl_id_reason
-from lmfdb.users import admin_required, knowl_reviewer_required
-from lmfdb.users.pwdmanager import userdb
-from lmfdb.utils import to_dict, code_snippet_knowl
+from ..users.main import admin_required, knowl_reviewer_required
+from ..users.pwdmanager import userdb
+from ..utilities import to_dict, code_snippet_knowl
 import markdown
-from lmfdb.logger import logger
-from lmfdb_utils.datetime_utils import datetime_to_timestamp_in_ms, timestamp_in_ms_to_datetime
-from lmfdb.utils import flash_error, flash_warning
-from lmfdb_utils.csrf import csrf_token, require_csrf_token
-from lmfdb.knowledge import knowledge_page
+from ..lazy import LazyObject
+from ..datetime_utils import datetime_to_timestamp_in_ms, timestamp_in_ms_to_datetime
+from ..utilities import flash_error, flash_warning
+from ..csrf import csrf_token, require_csrf_token
+from ..site import current_site
+from . import knowledge_page
+
+logger = logging.getLogger(__name__)
 
 
 _cache_time = 120
@@ -66,20 +69,34 @@ class KnowlTagPatternWithTitle(markdown.inlinepatterns.Pattern):
         return "{{ KNOWL('%s') }}" % kid
 
 
-# Initialize the markdown converter, sending a wikilink [[topic]] to the L-functions wiki
-md = markdown.Markdown(extensions=['markdown.extensions.wikilinks'],
-                       extension_configs={'wikilinks': [('base_url', 'https://wiki.l-functions.org/')]})
-# priority above escape (180), but below backtick (190)
-# Prevent $..$, $$..$$, \(..\), \[..\] blocks from being processed by Markdown
-md.inlinePatterns.register(IgnorePattern(r'(?<![\\\$])(\$[^\$].*?\$)'), 'math$', 186)
-md.inlinePatterns.register(IgnorePattern(r'(?<![\\])(\$\$.+?\$\$)'), 'math$$', 185)
-md.inlinePatterns.register(IgnorePattern(r'(\\\(.+?\\\))'), 'math\\(', 184)
-md.inlinePatterns.register(IgnorePattern(r'(\\\[.+?\\\])'), 'math\\[', 183)
-
 # Tells markdown to process "wikistyle" knowls with optional title
 # should cover [[[ KID ]]] and [[[ KID | title ]]]
 knowltagtitle_regex = r'\[\[\[[ ]*([^\]]+)[ ]*\]\]\]'
-md.inlinePatterns.register(KnowlTagPatternWithTitle(knowltagtitle_regex), 'knowltagtitle', 181)
+
+
+def make_markdown():
+    """
+    The markdown converter for knowls, sending a wikilink [[topic]] to the
+    site's wiki (Site.wiki_url), if it has one.
+    """
+    wiki_url = current_site().wiki_url
+    if wiki_url:
+        md = markdown.Markdown(extensions=['markdown.extensions.wikilinks'],
+                               extension_configs={'wikilinks': [('base_url', wiki_url)]})
+    else:
+        md = markdown.Markdown()
+    # priority above escape (180), but below backtick (190)
+    # Prevent $..$, $$..$$, \(..\), \[..\] blocks from being processed by Markdown
+    md.inlinePatterns.register(IgnorePattern(r'(?<![\\\$])(\$[^\$].*?\$)'), 'math$', 186)
+    md.inlinePatterns.register(IgnorePattern(r'(?<![\\])(\$\$.+?\$\$)'), 'math$$', 185)
+    md.inlinePatterns.register(IgnorePattern(r'(\\\(.+?\\\))'), 'math\\(', 184)
+    md.inlinePatterns.register(IgnorePattern(r'(\\\[.+?\\\])'), 'math\\[', 183)
+    md.inlinePatterns.register(KnowlTagPatternWithTitle(knowltagtitle_regex), 'knowltagtitle', 181)
+    return md
+
+
+# Created when first used, since it depends on the site
+md = LazyObject(make_markdown, "The markdown converter for knowls")
 
 # global (application wide) insertion of the variable "Knowl" to create
 # lightweight Knowl objects inside the templates.
@@ -211,7 +228,6 @@ def md_preprocess(text):
     return knowl_content
 
 
-@app.context_processor
 def ctx_knowledge():
     return {'csrf_token': csrf_token,
             'Knowl': Knowl,
@@ -222,7 +238,6 @@ def ctx_knowledge():
             "external_definition_link": external_definition_link}
 
 
-@app.template_filter("render_knowl")
 def render_knowl_in_template(knowl_content, **kwargs):
     """
     This function does the actual rendering, for render and the template_filter
@@ -257,9 +272,6 @@ def test_knowl_type(k):
     return isinstance(k, Knowl)
 
 
-app.jinja_env.tests['knowl_type'] = test_knowl_type
-
-
 # blueprint specific definition of the body_class variable
 
 
@@ -289,7 +301,7 @@ def test():
 @knowledge_page.route("/edit/<ID>")
 @login_required
 def edit(ID):
-    from lmfdb.utils.psycopg_compat import DatabaseError
+    from psycopg import DatabaseError
     if not allowed_id(ID):
         return redirect(url_for(".index"))
     knowl = Knowl(ID, editing=True)
@@ -352,7 +364,7 @@ def show(ID):
     if k.exists():
         r = render_knowl(ID, footer="0", raw=True)
         title = k.title or "'%s'" % k.id
-        if not is_beta():
+        if not current_site().is_beta():
             if k.status == 0:
                 title += " (awaiting review)"
             else:
@@ -579,7 +591,7 @@ def orphans():
 
 @knowledge_page.route("/columns")
 def columns():
-    from lmfdb import db
+    db = current_site().db
     bad_cat = knowldb.search(category="columns", types=["normal", "top", "bottom"])
     knowls = defaultdict(dict)
     for k in knowldb.search(types=["column"], projection=['id', 'cat', 'content']):
@@ -762,7 +774,7 @@ def render_knowl(ID, footer=None, kwargs=None,
 
         # If we are rendering a reviewed knowl on nonbeta,
         # we always include the timestamp
-        if timestamp is None and k.status == 1 and not is_beta():
+        if timestamp is None and k.status == 1 and not current_site().is_beta():
             kwargs['timestamp'] = k.ms_timestamp
 
     # the keyword arguments of the knowl are passed further along the chain
@@ -777,8 +789,8 @@ def render_knowl(ID, footer=None, kwargs=None,
     # Reserve their names and Jinja globals before adding query parameters.
     # "source" is render_template_string's own argument, so it cannot be passed.
     context = {}
-    app.update_template_context(context)
-    reserved = context.keys() | app.jinja_env.globals.keys() | {'source'}
+    current_app.update_template_context(context)
+    reserved = context.keys() | current_app.jinja_env.globals.keys() | {'source'}
     context.update({key: val for key, val in kwargs.items() if key not in reserved})
     context.update(k=k, knowl_permalink=permalink, knowl_header_title=header_title)
 
@@ -857,7 +869,7 @@ def render_knowl(ID, footer=None, kwargs=None,
 
 @knowledge_page.route("/", methods=['GET', 'POST'])
 def index():
-    from lmfdb.utils.psycopg_compat import DataError
+    from psycopg import DataError
     cur_cat = request.args.get("category", "")
 
     from .knowl import knowl_status_code, knowl_type_code

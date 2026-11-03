@@ -44,7 +44,7 @@ class LMFDBSearchTable(_ClientSearchTable):
         """
         We use knowls to implement the table description API.
         """
-        from lmfdb.knowledge.knowl import knowldb
+        from lmfdb_utils.knowledge.knowl import knowldb
         if table_description is None:
             current = knowldb.get_table_description(self.search_table)
             if current:
@@ -58,7 +58,7 @@ class LMFDBSearchTable(_ClientSearchTable):
         """
         We use knowls to implement the column description API.
         """
-        from lmfdb.knowledge.knowl import knowldb
+        from lmfdb_utils.knowledge.knowl import knowldb
         allcols = self.search_cols
         current = knowldb.get_column_descriptions(self.search_table)
         current = {col: kwl.content for col, kwl in current.items()}
@@ -97,7 +97,7 @@ class LMFDBSearchTable(_ClientSearchTable):
         - ``other_table`` -- a string, the name of the other table.
         - ``keep_old`` -- if true, new knowls for this table will be created from the column knowls for the old table.  Otherwise, the old knowls will be renamed, or deleted if they are not columns of this table.
         """
-        from lmfdb.knowledge.knowl import knowldb
+        from lmfdb_utils.knowledge.knowl import knowldb
         from lmfdb_utils.datetime_utils import utc_now_naive
         knowls = knowldb.get_column_description(other_table)
         with DelayCommit(self):
@@ -439,7 +439,7 @@ class LMFDBDatabase(_ClientDatabase):
     def drop_table(self, name, *args, **kwargs):
         cols = self[name].search_cols
         super().drop_table(name, *args, **kwargs)
-        from lmfdb.knowledge.knowl import knowldb
+        from lmfdb_utils.knowledge.knowl import knowldb
         knowldb.drop_table(name)
         for col in cols:
             knowldb.drop_column(name, col)

@@ -9,8 +9,8 @@
 import unittest
 
 from lmfdb import db
-from lmfdb.knowledge.knowl import knowldb
-from lmfdb.users.pwdmanager import userdb
+from lmfdb_utils.knowledge.knowl import knowldb
+from lmfdb_utils.users.pwdmanager import userdb
 
 
 class ConnectionResetTest(unittest.TestCase):

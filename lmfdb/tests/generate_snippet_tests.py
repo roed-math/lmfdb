@@ -322,7 +322,7 @@ def create_snippet_tests(yaml_file_path=None, ignore_langs=[], test=False, only_
     # fix from Edgar to mute slow cutoff messages
     for table in db.tablenames:
         db[table].slow_cutoff = 1e5
-    from lmfdb.knowledge.knowl import knowldb
+    from lmfdb_utils.knowledge.knowl import knowldb
     knowldb.slow_cutoff = 1e5
 
     langs = set()

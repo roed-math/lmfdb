@@ -44,10 +44,13 @@ jobs:
           package = os.environ["PACKAGE"]
           module = package.replace("-", "_")
           names = set(zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist())
+          # every module, template and static file of the package
+          root = os.path.join("packages", package)
           sources = {
-              "%s/%s" % (module, f)
-              for f in os.listdir(os.path.join("packages", package, module))
-              if f.endswith(".py")
+              os.path.relpath(os.path.join(path, f), root)
+              for path, dirs, files in os.walk(os.path.join(root, module))
+              for f in files
+              if "__pycache__" not in path and not f.endswith(".pyc")
           }
           missing = sources - names
           assert not missing, "the wheel is missing %s" % sorted(missing)
@@ -56,7 +59,7 @@ jobs:
               assert "lmf/__init__.py" in names
           stray = [n for n in names if n.split("/")[0] not in (module, "lmf") and ".dist-info/" not in n]
           assert not stray, "the wheel contains unexpected files: %s" % stray
-          print("the wheel contains the %d modules of %s" % (len(sources), module))
+          print("the wheel contains the %d files of %s" % (len(sources), module))
           EOF
 
       - name: Install the wheel into a clean venv

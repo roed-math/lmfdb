@@ -10,8 +10,8 @@ class Box():
         self.img = url_for('static', filename=f'images/{data["image"]}.png')
         if self.title == "Announcements":
             # Dynamic content generated from knowl
-            from lmfdb.knowledge.knowl import knowldb
-            from lmfdb.knowledge.main import md
+            from lmfdb_utils.knowledge.knowl import knowldb
+            from lmfdb_utils.knowledge.main import md
             max_entries = 3
             content = [line.strip() for line in
                        knowldb.get_knowl("content.announcements", ["content"])["content"].split("\n")]

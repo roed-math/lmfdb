@@ -3,8 +3,8 @@
 from unittest.mock import patch
 
 from lmfdb.tests import LmfdbTest
-from .main import login_page
-from lmfdb.users.main import userdb
+from lmfdb_utils.users import login_page
+from lmfdb_utils.users.pwdmanager import userdb
 
 class UsersTestCase(LmfdbTest):
     ### helpers

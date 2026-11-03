@@ -3,7 +3,7 @@ import yaml
 
 from lmfdb.config import root_lmfdb_path
 from .boxes import load_boxes
-from .sidebar import get_sidebar
+from lmfdb_utils.sidebar import get_sidebar
 
 # reading and sorting list of contributors once at startup
 with open(os.path.join(root_lmfdb_path, "CONTRIBUTORS.yaml")) as contrib_file:
