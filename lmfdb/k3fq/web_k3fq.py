@@ -102,7 +102,7 @@ def validate_label(label):
     if len(parts) != 3:
         raise ValueError("it must be of the form q.s.c1_..._c11, with q a prime power and s either p or m")
     q, s, iso = parts
-    if not q.isdigit() or not ZZ(q).is_prime_power():
+    if not q.isdigit() or q[0] == "0" or not ZZ(q).is_prime_power():
         raise ValueError("it must be of the form q.s.c1_..._c11, where q is a prime power")
     if s not in ["p", "m"]:
         raise ValueError("it must be of the form q.s.c1_..._c11, where the sign s is p or m")

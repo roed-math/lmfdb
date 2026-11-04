@@ -25,7 +25,7 @@ class K3FqLabelTest(unittest.TestCase):
         validate_label(SS_MINUS_LABEL)
         assert label_to_poly(SS_MINUS_LABEL)[-1] == -2
         for bad in ["2.p.a_a", "6.p.a_a_a_a_a_a_a_a_a_a_a", "2.m.a_a_a_a_a_a_a_a_a_a_b",
-                    "2.x.a_a_a_a_a_a_a_a_a_a_a", "2.p.aa_a_a_a_a_a_a_a_a_a_a"]:
+                    "2.x.a_a_a_a_a_a_a_a_a_a_a", "2.p.aa_a_a_a_a_a_a_a_a_a_a", "02.p.a_a_a_a_a_a_a_a_a_a_a"]:
             self.assertRaises(ValueError, validate_label, bad)
 
 
