@@ -41,7 +41,8 @@ def get_username(uid):
 
 def ctx_proc_userdata():
     userdata = {}
-    userdata['user_can_write'] = userdb.can_read_write_userdb()
+    # a site without a database has no users
+    userdata['user_can_write'] = current_site().has_database() and userdb.can_read_write_userdb()
     if not userdata['user_can_write']:
         userdata['userid'] = 'anon'
         userdata['username'] = 'Anonymous'

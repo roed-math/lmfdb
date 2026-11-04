@@ -160,11 +160,19 @@ def grant_website_access(db, role, edit=True):
       LMFDB uses ``edit=False`` for www.lmfdb.org and ``edit=True`` for
       beta.lmfdb.org.
 
+    Any other privileges the role had on these tables are revoked first, so
+    that ``edit=False`` makes a role that could edit read-only.
+
     The website's data tables are granted by psycodict's grant policy (see
     ``psycodict.grants``) when they are created.
     """
     ident = Identifier(role)
     with DelayCommit(db, silence=True):
+        for table in ("kwl_knowls", "kwl_locks", "userdb.users", "userdb.tokens"):
+            db._execute(SQL("REVOKE ALL ON {0} FROM {1}").format(SQL(table), ident))
+        # column privileges are separate from table privileges
+        db._execute(SQL("REVOKE ALL ({0}) ON userdb.users FROM {1}").format(
+            SQL(", ").join(map(Identifier, _user_columns(db))), ident))
         db._execute(SQL("GRANT USAGE ON SCHEMA userdb TO {0}").format(ident))
         if edit:
             db._execute(SQL("GRANT SELECT, INSERT, UPDATE ON kwl_knowls, kwl_locks TO {0}").format(ident))
@@ -174,7 +182,20 @@ def grant_website_access(db, role, edit=True):
             db._execute(SQL("GRANT SELECT ON kwl_knowls TO {0}").format(ident))
             # only the names of users, which are shown as the authors of knowls
             db._execute(SQL("GRANT SELECT (username, full_name) ON userdb.users TO {0}").format(ident))
+    if not edit:
+        writable = db._execute(SQL(
+            "SELECT 1 FROM information_schema.role_table_grants WHERE grantee = %s AND "
+            "((table_schema = 'public' AND table_name IN ('kwl_knowls', 'kwl_locks')) OR table_schema = 'userdb') "
+            "AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')"), [role]).fetchone()
+        if writable:
+            # for example through a role it is a member of
+            raise RuntimeError("%s can still write the knowls or users" % role)
     print("Granted %s access to the knowls and users (%s)" % (role, "read and write" if edit else "read only"))
+
+
+def _user_columns(db):
+    return [rec[0] for rec in db._execute(SQL(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'userdb' AND table_name = 'users'"))]
 
 
 def add_user(db, username, password, full_name=None, admin=False, knowl_reviewer=False):
@@ -192,16 +213,24 @@ def add_user(db, username, password, full_name=None, admin=False, knowl_reviewer
       and create registration links)
     - ``knowl_reviewer`` -- whether the user can mark knowls as reviewed
     """
+    from .datetime_utils import utc_now_naive
     from .users.main import allowed_usernames
     from .users.pwdmanager import PostgresUserTable
     if not allowed_usernames.match(username):
         raise ValueError("Usernames consist of letters, digits, '.', '_' and '-'")
+    # Only the database given is used (not the website's), and the account
+    # is created with its permissions in one statement
     users = PostgresUserTable(db)
     if not users.can_read_write_userdb():
         raise RuntimeError("This connection cannot write userdb.users")
-    users.new_user(username, pwd=password, full_name=full_name)
+    if users.user_exists(username):
+        raise ValueError("User %s already exists" % username)
+    bcpassword = users.bchash(password)
+    if not bcpassword:
+        raise RuntimeError("Passwords cannot be hashed: is bcrypt installed?")
     db._execute(
-        SQL("UPDATE userdb.users SET (admin, knowl_reviewer) = (%s, %s) WHERE username = %s"),
-        [admin, knowl_reviewer, username],
+        SQL("INSERT INTO userdb.users (username, bcpassword, created, full_name, admin, knowl_reviewer) "
+            "VALUES (%s, %s, %s, %s, %s, %s)"),
+        [username, bcpassword, utc_now_naive(), full_name, admin, knowl_reviewer],
     )
     print("User %s created" % username)

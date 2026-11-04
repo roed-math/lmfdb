@@ -164,6 +164,28 @@ def test_search_parsing(app):
     assert set(query["regulator"]) == {"$gte", "$lte"}
 
 
+def test_css_assets_are_in_the_package():
+    # every local file the package's style sheets refer to (images, mostly)
+    # must be in the package: the LMFDB checkout's own static folder would
+    # otherwise hide an omission that breaks other websites
+    import re
+    package_dir = os.path.dirname(os.path.abspath(lmfdb_utils.__file__))
+    static = os.path.join(package_dir, "static")
+    sheets = [os.path.join(static, f) for f in os.listdir(static) if f.endswith(".css")]
+    sheets.append(os.path.join(package_dir, "templates", "style.css"))
+    url = re.compile(r"""url\(\s*(?:\{\{\s*url_for\(\s*'static'\s*,\s*filename\s*=\s*)?['"]?([^'")}\s]+)""")
+    missing = []
+    for sheet in sheets:
+        with open(sheet) as F:
+            for ref in url.findall(F.read()):
+                if ref.startswith(("data:", "http:", "https:", "#")):
+                    continue
+                path = re.sub(r"^/?static/", "", ref)
+                if not os.path.exists(os.path.join(static, path)):
+                    missing.append("%s: %s" % (os.path.basename(sheet), ref))
+    assert not missing, missing
+
+
 def test_lazy_object():
     from lmfdb_utils.lazy import LazyObject
     created = []
@@ -240,22 +262,15 @@ def test_color_schemes(site):
 
 
 @pytest.fixture
-def web_app(site, tmp_path, monkeypatch):
+def web_app(site, tmp_path):
     """
-    A Flask application set up with init_app, for a site without a database:
-    the user database is replaced by one that cannot log anyone in.
+    A Flask application set up with init_app, for a site without a database
+    (so without knowls or users).
     """
     if not HAVE_SAGE:
         pytest.skip("requires Sage")
     flask = pytest.importorskip("flask")
     from lmfdb_utils import web
-    import lmfdb_utils.users.main as users_main
-
-    class NoUsers:
-        def can_read_write_userdb(self):
-            return False
-
-    monkeypatch.setattr(users_main, "userdb", NoUsers())
 
     class TestSite(site_mod.Site):
         name = "Test Site"

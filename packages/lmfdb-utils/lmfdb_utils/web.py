@@ -19,6 +19,14 @@ the same way.
 
 The application must also provide an ``index`` endpoint (the home page,
 linked from the header of every page).
+
+A site without a database (one that does not override ``Site.db``) gets the
+layout, style sheet and static files, but no knowls, and nobody can log in.
+
+There is one site per Python process: the site installed by ``init_app``
+(:func:`~lmfdb_utils.site.current_site`), and the knowledge and user
+databases, markdown converter and sidebar built from it, are shared by every
+application in the process.  Run different websites in different processes.
 """
 
 import os
