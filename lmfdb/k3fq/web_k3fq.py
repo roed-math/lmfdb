@@ -18,7 +18,7 @@ from flask import url_for
 
 from lmfdb import db
 from lmfdb.utils import (
-    display_float, encode_plot, raw_typeset_poly, list_factored_to_factored_poly_otherorder,
+    bigint_knowl, display_float, encode_plot, raw_typeset_poly, list_factored_to_factored_poly_otherorder,
 )
 from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl
 from lmfdb.number_fields.web_number_field import field_pretty
@@ -214,17 +214,29 @@ def poly_latex_increasing(coeffs, var="T"):
 def integer_display(n, factor_bound=10**24):
     """
     Typesets an integer, along with its factorization when it is not too big.
+    Large integers (such as Artin-Tate values over big extensions) are abbreviated,
+    with the full value in a knowl.
     """
     if n is None:
         return "not computed"
     n = ZZ(n)
-    if abs(n) <= 1 or abs(n) > factor_bound or n.is_prime():
+    if abs(n) > factor_bound:
+        return bigint_knowl(n, cutoff=24)
+    if abs(n) <= 1 or n.is_prime():
         return "$%s$" % n
     return r"$%s = %s$" % (n, latex(factor(n)).replace(r"-1 \cdot", "-"))
 
 
+def label_wbr(label):
+    """
+    The label with line break opportunities after the underscores, since
+    labels of classes with large coefficients can be long.
+    """
+    return label.replace("_", "_<wbr>")
+
+
 def k3_class_link(label):
-    return '<a href="%s">%s</a>' % (url_for("k3fq.by_label", label=label), label)
+    return '<a href="%s">%s</a>' % (url_for("k3fq.by_label", label=label), label_wbr(label))
 
 
 def av_class_link(label):
@@ -619,14 +631,17 @@ class WebK3Fq():
         """
         if not self.twists:
             return []
-        bc_labels = list({tw[1] for tw in self.twists})
-        try:
-            known = set(isog_table.search({"label": {"$in": bc_labels}}, "label"))
-        except Exception:
-            known = set()
+        # The common base changes are usually over fields that are much too big for the database
+        bc_labels = list({tw[1] for tw in self.twists if tw[1]})
+        known = set(isog_table.search({"label": {"$in": bc_labels}}, "label")) if bc_labels else set()
         rows = []
         for label, bc_label, n in self.twists:
-            bc = k3_class_link(bc_label) if bc_label in known else bc_label + " (not in LMFDB)"
+            if bc_label is None:
+                bc = "not computed"
+            elif bc_label in known:
+                bc = k3_class_link(bc_label)
+            else:
+                bc = '<span title="%s">not in the LMFDB</span>' % bc_label
             rows.append((k3_class_link(label), n, bc))
         return rows
 

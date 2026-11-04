@@ -67,7 +67,7 @@ class K3FqStats(StatsDisplay):
     buckets = {
         "twist_count": ["1", "2", "3-4", "5-8", "9-16", "17-50", "51-"],
         "max_twist_degree": ["1", "2", "3-4", "5-8", "9-24", "25-"],
-        "geometric_extension_degree": ["1", "2", "3-4", "5-8", "9-24", "25-"],
+        "geometric_extension_degree": ["1", "2", "3-6", "7-12", "13-24", "25-60", "61-"],
     }
     knowls = {
         "q": "ag.base_field",

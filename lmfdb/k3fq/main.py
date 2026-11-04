@@ -12,16 +12,16 @@ from lmfdb.utils import (
 )
 from lmfdb.utils.search_parsing import search_parser, parse_range2, collapse_ors, LIST_RE
 from lmfdb.utils.interesting import interesting_knowls
-from lmfdb.utils.search_columns import SearchColumns, SearchCol, MathCol, LinkCol, ProcessedCol, CheckCol
+from lmfdb.utils.search_columns import SearchColumns, SearchCol, MathCol, ProcessedLinkCol, ProcessedCol, CheckCol
 from lmfdb.api import datapage
-from lmfdb.abvar.fq.search_parsing import parse_nf_string, parse_galgrp
+from lmfdb.abvar.fq.search_parsing import parse_nf_string
 from psycodict.utils import SearchParsingError
 
 from lmfdb import db
 from . import k3fq_page
 from .web_k3fq import (
     WebK3Fq, isog_table, table_exists, validate_label, poly_to_label, lpoly_to_poly,
-    realizable_display, LABEL_RE, ISOG_TABLE, LATTICE_TABLE, DEGREE,
+    realizable_display, label_wbr, LABEL_RE, ISOG_TABLE, LATTICE_TABLE, DEGREE,
 )
 from .stats import K3FqStats
 from .download import K3Fq_download
@@ -239,6 +239,20 @@ def parse_k3_label(inp, query, qfield):
     except ValueError as err:
         raise SearchParsingError(str(err))
     query[qfield] = inp
+
+
+@search_parser(clean_info=True, error_is_safe=True)
+def parse_galgrp(inp, query, qfield):
+    """
+    Search for classes where the Galois group of some factor of the transcendental
+    part is one of the given groups.
+    """
+    from lmfdb.galois_groups.transitive_group import complete_group_codes
+    try:
+        gcs, _ = complete_group_codes(inp)
+    except NameError:
+        raise SearchParsingError("It needs to be a <a title='Galois group labels' knowl='nf.galois_group.name'>group label</a>, such as C4 or 4T1, or a comma separated list of such labels")
+    query[qfield] = {"$overlaps": ["%sT%s" % (n, t) for n, t in gcs]}
 
 
 NEWTON_OPTIONS = {
@@ -615,7 +629,7 @@ def realizable_col(col, title, default=False):
 
 
 k3fq_columns = SearchColumns([
-    LinkCol("label", "k3.fq.lmfdb_label", "Label", url_for_label),
+    ProcessedLinkCol("label", "k3.fq.lmfdb_label", "Label", url_for_label, label_wbr),
     MathCol("field", "ag.base_field", "Base field", download_col="q"),
     MathCol("p", "ag.base_field", "Base char.", short_title="base characteristic", default=False),
     MathCol("sign_display", "k3.fq.sign", "Sign", download_col="sign"),
