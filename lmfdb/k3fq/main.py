@@ -305,13 +305,17 @@ class K3FqSearchArray(SearchArray):
              ("twist_count", "number of twists", ["twist_count", "q", "poly"])]
     noun = "class"
     plural_noun = "classes"
-    jump_example = "2.p.abc_a_a_a_a_a_a_a_a_a_a"
+    jump_example = "2.p.a_a_a_a_a_a_a_a_a_a_a"
     jump_egspan = "e.g. a label, or a polynomial P(T) or L(T) of degree 22"
     jump_knowl = "k3.fq.search_input"
     jump_prompt = "Label or polynomial"
     null_column_explanations = {
-        # height is null exactly for supersingular classes, so null values don't indicate missing data
+        # These columns are null by definition for some classes (rather than not computed):
+        # height for supersingular classes, ns_disc_class when the Picard rank is 0,
+        # and transcendental_irreducible for supersingular classes
         "height": False,
+        "ns_disc_class": False,
+        "transcendental_irreducible": False,
     }
 
     def __init__(self):
