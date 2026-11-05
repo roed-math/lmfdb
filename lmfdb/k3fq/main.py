@@ -319,7 +319,7 @@ class K3FqSearchArray(SearchArray):
              ("twist_count", "number of twists", ["twist_count", "q", "poly"])]
     noun = "class"
     plural_noun = "classes"
-    jump_example = "2.p.a_a_a_a_a_a_a_a_a_a_a"
+    jump_example = "2.20.a.b"
     jump_egspan = "e.g. a label, or a polynomial P(T) or L(T) of degree 22"
     jump_knowl = "k3.fq.search_input"
     jump_prompt = "Label or polynomial"
@@ -538,7 +538,7 @@ class K3FqSearchArray(SearchArray):
             "geometric_class",
             label="Geometric class",
             knowl="k3.fq.twist",
-            example="2.p.a_a_a_a_a_a_a_a_a_a_a",
+            example="2.20.a.b",
             example_span="a label",
             advanced=True,
         )

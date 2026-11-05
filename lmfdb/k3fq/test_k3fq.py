@@ -7,9 +7,9 @@ from lmfdb.tests import LmfdbTest
 HAS_TABLE = "k3_fq_isog" in db.tablenames
 
 # P(T) = 2(1-T)^22, supersingular over F_2
-SS_LABEL = "2.p.abs_ru_aeom_vqs_aczxs_imtm_atkou_bkkbs_aceprc_cvpea_adchca"
+SS_LABEL = "2.22.a"
 # P(T) = 2(1-T)^21(1+T), supersingular with sign -1
-SS_MINUS_LABEL = "2.m.abo_oo_adie_nuc_abqmy_dwiw_ahbmm_jyam_akhoy_grya_a"
+SS_MINUS_LABEL = "2.22.b"
 
 
 class K3FqLabelTest(unittest.TestCase):
@@ -24,13 +24,30 @@ class K3FqLabelTest(unittest.TestCase):
         assert lpoly_to_poly(lpoly) == poly
         validate_label(SS_MINUS_LABEL)
         assert label_to_poly(SS_MINUS_LABEL)[-1] == -2
+        # 2 + 2T^22 = 2 Phi_4 Phi_44 is also supersingular
+        assert poly_to_label([2] + [0] * 21 + [2]) == "2.22.dilx"
+        assert label_to_poly("2.22.dilx") == [2] + [0] * 21 + [2]
+        # (1-T)^16 Phi_4 (4 + T + 6T^2 + T^3 + 4T^4) over F_4
+        from sage.all import PolynomialRing, ZZ
+        T = PolynomialRing(ZZ, "T").gen()
+        P = ((1 - T)**16 * (1 + T**2) * (4 + T + 6*T**2 + T**3 + 4*T**4)).list()
+        assert poly_to_label(P) == "4.18.e.b_g"
+        assert label_to_poly("4.18.e.b_g") == P
+        from lmfdb.k3fq.web_k3fq import cyclotomic_index, cyclotomic_orders, num_cyclotomic_parts
+        assert [num_cyclotomic_parts(k) for k in (0, 2, 22)] == [1, 6, 60280]
+        assert [cyclotomic_orders(2, i) for i in range(6)] == [[1, 1], [1, 2], [2, 2], [3], [4], [6]]
+        for i in range(0, 60280, 997):
+            assert cyclotomic_index(cyclotomic_orders(22, i)) == i
         from lmfdb.k3fq.main import in_ranges
         assert in_ranges(5, "2-") and in_ranges(5, "1,3-6") and in_ranges(5, "4..9")
         assert not in_ranges(5, "6-") and not in_ranges(5, "2,3")
         assert in_ranges(4, "2^2") and in_ranges(4, "2*2") and not in_ranges(5, "2^2")
-        for bad in ["2.p.a_a", "6.p.a_a_a_a_a_a_a_a_a_a_a", "2.m.a_a_a_a_a_a_a_a_a_a_b",
-                    "2.x.a_a_a_a_a_a_a_a_a_a_a", "2.p.aa_a_a_a_a_a_a_a_a_a_a", "02.p.a_a_a_a_a_a_a_a_a_a_a"]:
+        for bad in ["2.p.a_a", "2.p.abs_ru_aeom_vqs_aczxs_imtm_atkou_bkkbs_aceprc_cvpea_adchca",
+                    "6.20.a.b", "02.20.a.b", "1.20.a.b", "2.21.a.b", "2.020.a.b", "2.24.a", "2.22",
+                    "2.22.ab", "2.22.dmcd", "2.22.a.b", "2.20.a", "2.20.a.b_c", "2.20.a.aab", "2.20.A.b"]:
             self.assertRaises(ValueError, validate_label, bad)
+        for good in ["2.20.a.ab", "2.0.a.a_a_a_a_a_a_a_a_a_a_a", "3.18.osw.ab_b"]:
+            validate_label(good)
 
 
 @unittest.skipUnless(HAS_TABLE, "k3_fq_isog is not in this database")
@@ -50,7 +67,8 @@ class K3FqTest(LmfdbTest):
 
     def test_bad_label(self):
         self.check_args("/Motive/K3/Fq/2.p.a_a_a", "not a valid label")
-        self.check_args("/Motive/K3/Fq/2.p.b_a_a_a_a_a_a_a_a_a_a", "not in the database")
+        self.check_args("/Motive/K3/Fq/2.22.ab", "not a valid label")
+        self.check_args("/Motive/K3/Fq/2.20.a.zz", "not in the database")
 
     def test_jump(self):
         self.check_args("/Motive/K3/Fq/?jump=2*(1-T)^22", SS_LABEL)

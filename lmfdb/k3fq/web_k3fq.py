@@ -23,8 +23,9 @@ from lmfdb.utils import (
 from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl
 from lmfdb.number_fields.web_number_field import field_pretty
 
-from sage.all import ZZ, QQ, RR, Integer, cyclotomic_polynomial, factor, latex
+from sage.all import ZZ, QQ, RR, Integer, PolynomialRing, cyclotomic_polynomial, euler_phi, factor, latex
 from sage.databases.cremona import cremona_letter_code, class_to_int
+from sage.misc.cachefunc import cached_function
 from sage.misc.lazy_attribute import lazy_attribute
 from sage.plot.all import circle, points
 
@@ -63,9 +64,22 @@ def table_exists(name=ISOG_TABLE):
 #   Labels
 #########################
 
-LABEL_RE = re.compile(r"^(\d+)\.([pm])\.([a-z]+(?:_[a-z]+){10})$")
+# A label q.rho.c.b1_..._bk describes the factorization P = C * P_T into the
+# cyclotomic part C, of degree rho (the geometric Picard rank), and the
+# transcendental part P_T = q + b_1 T + ... + q T^{2k}, which is palindromic of
+# degree 2k = 22 - rho.  The code c is the index of the exponent vector
+# (e_1, e_2, e_3, ...) of C = (1 - T)^{e_1} prod_{m > 1} Phi_m^{e_m} among
+# those of degree rho, in decreasing lexicographic order.  When rho = 22 the
+# label is q.22.c.  See the knowl k3.fq.lmfdb_label; this is the same code as
+# k3fq/labels.py in the repository that computes the data.
+
+LABEL_RE = re.compile(r"^(\d+)\.(\d+)\.([a-z]+)(?:\.([a-z]+(?:_[a-z]+)*))?$")
 DEGREE = 22
 HALF = 11
+LABEL_FORM = "q.rho.c.b1_..._bk"
+
+# The m with phi(m) <= 22, in increasing order (phi(m) >= sqrt(m/2))
+CYCLOTOMIC_ORDERS = [m for m in range(1, 2 * DEGREE**2 + 1) if euler_phi(m) <= DEGREE]
 
 
 def encode_coeff(c):
@@ -85,12 +99,84 @@ def decode_coeff(s):
     return class_to_int(s)
 
 
+@cached_function
+def cyclotomic_tail_counts():
+    """
+    N[i][k] is the number of exponent vectors of degree k supported on
+    CYCLOTOMIC_ORDERS[i:].
+    """
+    n = len(CYCLOTOMIC_ORDERS)
+    N = [[0] * (DEGREE + 1) for _ in range(n + 1)]
+    N[n][0] = 1
+    for i in range(n - 1, -1, -1):
+        ph = euler_phi(CYCLOTOMIC_ORDERS[i])
+        for k in range(DEGREE + 1):
+            N[i][k] = sum(N[i + 1][k - e * ph] for e in range(k // ph + 1))
+    return N
+
+
+def num_cyclotomic_parts(rho):
+    return cyclotomic_tail_counts()[0][rho]
+
+
+def cyclotomic_index(orders):
+    """
+    The index of the cyclotomic part prod Phi_m (m in ``orders``, with
+    multiplicity) among those of the same degree.
+    """
+    exps = Counter(orders)
+    k = sum(euler_phi(m) for m in orders)
+    N = cyclotomic_tail_counts()
+    idx = 0
+    for i, m in enumerate(CYCLOTOMIC_ORDERS):
+        ph = euler_phi(m)
+        e = exps[m]
+        # vectors agreeing so far but with a larger exponent of Phi_m come first
+        for f in range(e + 1, k // ph + 1):
+            idx += N[i + 1][k - f * ph]
+        k -= e * ph
+    return idx
+
+
+def cyclotomic_orders(rho, idx):
+    """
+    The sorted list of m (with multiplicity) for the cyclotomic part of degree
+    ``rho`` with index ``idx``.
+    """
+    N = cyclotomic_tail_counts()
+    orders = []
+    k = rho
+    for i, m in enumerate(CYCLOTOMIC_ORDERS):
+        ph = euler_phi(m)
+        for e in range(k // ph, -1, -1):
+            n = N[i + 1][k - e * ph]
+            if idx < n:
+                break
+            idx -= n
+        orders.extend([m] * e)
+        k -= e * ph
+    return orders
+
+
+def cyclotomic_product(orders):
+    """
+    prod Phi_m over ``orders``, normalized to have constant term 1.
+    """
+    R = PolynomialRing(ZZ, "T")
+    C = R(1)
+    for m in orders:
+        f = R(cyclotomic_polynomial(m).list())
+        C *= f if f[0] == 1 else -f
+    return C
+
+
 def split_label(label):
     """
-    Returns the triple (q, s, codes) for a label q.s.c1_..._c11, where s is 'p' or 'm'.
+    Returns the tuple (q, rho, c, codes) for a label q.rho.c.b1_..._bk, where
+    codes is the list [b1, ..., bk] (empty when rho = 22).
     """
-    q, s, iso = label.split(".")
-    return int(q), s, iso.split("_")
+    q, rho, c, codes = LABEL_RE.fullmatch(label).groups()
+    return int(q), int(rho), c, codes.split("_") if codes else []
 
 
 def validate_label(label):
@@ -98,33 +184,38 @@ def validate_label(label):
     Raises a ValueError (with a message suitable for display) if ``label`` is
     not a valid label for a class of K3-type motives over a finite field.
     """
-    parts = label.split(".")
-    if len(parts) != 3:
-        raise ValueError("it must be of the form q.s.c1_..._c11, with q a prime power and s either p or m")
-    q, s, iso = parts
-    if not q.isdigit() or q[0] == "0" or not ZZ(q).is_prime_power():
-        raise ValueError("it must be of the form q.s.c1_..._c11, where q is a prime power")
-    if s not in ["p", "m"]:
-        raise ValueError("it must be of the form q.s.c1_..._c11, where the sign s is p or m")
-    codes = iso.split("_")
-    if len(codes) != HALF:
-        raise ValueError("the final part must be of the form c1_c2_..._c11, with 11 components")
-    if not all(c and c.isalpha() and c.isascii() and c == c.lower() for c in codes):
-        raise ValueError("the final part must be of the form c1_c2_..._c11, with each ci consisting of lower case letters")
-    if not all(encode_coeff(decode_coeff(c)) == c for c in codes):
-        raise ValueError("the coefficient codes c1, ..., c11 are not in normal form")
-    if s == "m" and codes[-1] != "a":
-        raise ValueError("when the sign is m (that is, -1), the last code c11 must be a")
+    match = LABEL_RE.fullmatch(label)
+    if not match:
+        raise ValueError("it must be of the form %s, with q a prime power, rho an even integer between 0 and 22, and c and the bi consisting of lower case letters (with no final part when rho = 22)" % LABEL_FORM)
+    q, rho, c, codes = match.groups()
+    if q[0] == "0" or not ZZ(q).is_prime_power():
+        raise ValueError("it must be of the form %s, where q is a prime power" % LABEL_FORM)
+    if (rho[0] == "0" and rho != "0") or int(rho) > DEGREE or int(rho) % 2:
+        raise ValueError("it must be of the form %s, where the geometric Picard rank rho is an even integer between 0 and 22" % LABEL_FORM)
+    rho = int(rho)
+    if cremona_letter_code(class_to_int(c)) != c:
+        raise ValueError("the cyclotomic code c must not start with a (unless it is a)")
+    if class_to_int(c) >= num_cyclotomic_parts(rho):
+        raise ValueError("there are only %s cyclotomic parts of degree %s, so the cyclotomic code c must come before %s" % (num_cyclotomic_parts(rho), rho, cremona_letter_code(num_cyclotomic_parts(rho))))
+    k = (DEGREE - rho) // 2
+    codes = codes.split("_") if codes else []
+    if len(codes) != k:
+        if k == 0:
+            raise ValueError("when rho = 22 there is no transcendental part, so the label has the form q.22.c")
+        raise ValueError("when rho = %s the final part must be of the form b1_..._b%s, with %s components" % (rho, k, k))
+    if not all(encode_coeff(decode_coeff(b)) == b for b in codes):
+        raise ValueError("the coefficient codes b1, ..., b%s are not in normal form" % k)
 
 
 def label_to_poly(label):
     """
     The coefficients [a_0, ..., a_22] of P(T) determined by a (valid) label.
     """
-    q, s, codes = split_label(label)
-    eps = 1 if s == "p" else -1
-    first = [q] + [decode_coeff(c) for c in codes]
-    return first + [eps * first[HALF - i] for i in range(1, HALF + 1)]
+    q, rho, c, codes = split_label(label)
+    lower = [decode_coeff(b) for b in codes]
+    trans = [q] + lower + lower[:-1][::-1] + [q] if lower else [q]
+    P = cyclotomic_product(cyclotomic_orders(rho, class_to_int(c))) * PolynomialRing(ZZ, "T")(trans)
+    return [ZZ(a) for a in P.padded_list(DEGREE + 1)]
 
 
 def poly_to_label(coeffs):
@@ -150,7 +241,24 @@ def poly_to_label(coeffs):
         raise ValueError("the leading coefficient must be q or -q")
     if any(coeffs[DEGREE - i] != eps * coeffs[i] for i in range(DEGREE + 1)):
         raise ValueError("the coefficients must satisfy a_{22-i} = %s a_i" % ("" if eps == 1 else "-"))
-    return "%s.%s.%s" % (q, "p" if eps == 1 else "m", "_".join(encode_coeff(c) for c in coeffs[1:HALF + 1]))
+    R = PolynomialRing(ZZ, "T")
+    P = R(coeffs)
+    C = P.cyclotomic_part()
+    orders = []
+    if C.degree() > 0:
+        for f, e in C.factor():
+            m = f.is_cyclotomic(certificate=True)
+            orders.extend([m] * e)
+    orders.sort()
+    trans = P // cyclotomic_product(orders)
+    rho = sum(euler_phi(m) for m in orders)
+    k = (DEGREE - rho) // 2
+    if trans.list() != trans.list()[::-1] or trans[0] != q:
+        raise ValueError("the transcendental part must be palindromic with constant term q")
+    label = "%s.%s.%s" % (q, rho, cremona_letter_code(cyclotomic_index(orders)))
+    if k:
+        label += "." + "_".join(encode_coeff(trans[i]) for i in range(1, k + 1))
+    return label
 
 
 def lpoly_to_poly(lcoeffs):
