@@ -31,8 +31,14 @@ class K3FqLabelTest(unittest.TestCase):
         from sage.all import PolynomialRing, ZZ
         T = PolynomialRing(ZZ, "T").gen()
         P = ((1 - T)**16 * (1 + T**2) * (4 + T + 6*T**2 + T**3 + 4*T**4)).list()
-        assert poly_to_label(P) == "4.18.e.b_g"
-        assert label_to_poly("4.18.e.b_g") == P
+        assert poly_to_label(P) == "4.18.e.ot"
+        assert label_to_poly("4.18.e.ot") == P
+        # b_2 = 17 needs two letters, so b_1 = -12 gets two as well
+        P = ((1 - T)**18 * (2 - 3*T + 2*T**2)**2).list()
+        assert poly_to_label(P) == "4.18.a.nboe"
+        assert label_to_poly("4.18.a.nboe") == P
+        from lmfdb.k3fq.web_k3fq import label_wbr
+        assert label_wbr("4.18.a.nboe") == "4.18.a.nb<wbr>oe" and label_wbr("4.18.e.ot") == "4.18.e.ot"
         from lmfdb.k3fq.web_k3fq import cyclotomic_index, cyclotomic_orders, num_cyclotomic_parts
         assert [num_cyclotomic_parts(k) for k in (0, 2, 22)] == [1, 6, 60280]
         assert [cyclotomic_orders(2, i) for i in range(6)] == [[1, 1], [1, 2], [2, 2], [3], [4], [6]]
@@ -43,10 +49,11 @@ class K3FqLabelTest(unittest.TestCase):
         assert not in_ranges(5, "6-") and not in_ranges(5, "2,3")
         assert in_ranges(4, "2^2") and in_ranges(4, "2*2") and not in_ranges(5, "2^2")
         for bad in ["2.p.a_a", "2.p.abs_ru_aeom_vqs_aczxs_imtm_atkou_bkkbs_aceprc_cvpea_adchca",
-                    "6.20.a.b", "02.20.a.b", "1.20.a.b", "2.21.a.b", "2.020.a.b", "2.24.a", "2.22",
-                    "2.22.ab", "2.22.dmcd", "2.22.a.b", "2.20.a", "2.20.a.b_c", "2.20.a.aab", "2.20.A.b"]:
+                    "6.20.a.o", "02.20.a.o", "1.20.a.o", "2.21.a.o", "2.020.a.o", "2.24.a", "2.22",
+                    "2.22.ab", "2.22.dmcd", "2.22.a.o", "2.20.a", "2.20.a.", "2.20.a.o_o", "2.18.a.ooo",
+                    "2.18.a.nono", "2.20.a.no", "2.20.A.o", "4.18.e.b_g"]:
             self.assertRaises(ValueError, validate_label, bad)
-        for good in ["2.20.a.ab", "2.0.a.a_a_a_a_a_a_a_a_a_a_a", "3.18.osw.ab_b"]:
+        for good in ["2.20.a.m", "2.20.a.zz", "2.0.a.nnnnnnnnnnn", "3.18.osw.mo", "4.18.a.nboe"]:
             validate_label(good)
 
 

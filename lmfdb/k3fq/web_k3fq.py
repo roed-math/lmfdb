@@ -64,39 +64,63 @@ def table_exists(name=ISOG_TABLE):
 #   Labels
 #########################
 
-# A label q.rho.c.b1_..._bk describes the factorization P = C * P_T into the
+# A label q.rho.c.t describes the factorization P = C * P_T into the
 # cyclotomic part C, of degree rho (the geometric Picard rank), and the
 # transcendental part P_T = q + b_1 T + ... + q T^{2k}, which is palindromic of
 # degree 2k = 22 - rho.  The code c is the index of the exponent vector
 # (e_1, e_2, e_3, ...) of C = (1 - T)^{e_1} prod_{m > 1} Phi_m^{e_m} among
-# those of degree rho, in decreasing lexicographic order.  When rho = 22 the
-# label is q.22.c.  See the knowl k3.fq.lmfdb_label; this is the same code as
-# k3fq/labels.py in the repository that computes the data.
+# those of degree rho, in decreasing lexicographic order.  The code t is
+# b_1, ..., b_k in balanced base 26 (a-z are the digits -13, ..., 12, so n = 0),
+# padded with leading n's to the smallest common width and concatenated.  When
+# rho = 22 the label is q.22.c.  See the knowl k3.fq.lmfdb_label; this is the
+# same code as k3fq/labels.py in the repository that computes the data.
 
-LABEL_RE = re.compile(r"^(\d+)\.(\d+)\.([a-z]+)(?:\.([a-z]+(?:_[a-z]+)*))?$")
+LABEL_RE = re.compile(r"^(\d+)\.(\d+)\.([a-z]+)(?:\.([a-z]+))?$")
 DEGREE = 22
 HALF = 11
-LABEL_FORM = "q.rho.c.b1_..._bk"
+LABEL_FORM = "q.rho.c.t"
 
 # The m with phi(m) <= 22, in increasing order (phi(m) >= sqrt(m/2))
 CYCLOTOMIC_ORDERS = [m for m in range(1, 2 * DEGREE**2 + 1) if euler_phi(m) <= DEGREE]
 
 
-def encode_coeff(c):
+def balanced_code(n, width=1):
     """
-    Encode an integer as in abelian variety labels: base 26 with digits a-z,
-    and a leading 'a' for negative numbers.
+    ``n`` in balanced base 26, with the letters a-z standing for the digits
+    -13, ..., 12, padded with leading n's (the digit 0) to ``width`` letters.
     """
-    c = ZZ(c)
-    if c < 0:
-        return "a" + cremona_letter_code(-c)
-    return cremona_letter_code(c)
+    n = int(n)
+    digits = []
+    while n or not digits:
+        r = (n + 13) % 26 - 13
+        digits.append(r)
+        n = (n - r) // 26
+    digits.extend([0] * (width - len(digits)))
+    return "".join(chr(110 + d) for d in reversed(digits))
 
 
-def decode_coeff(s):
-    if len(s) > 1 and s[0] == "a":
-        return -class_to_int(s[1:])
-    return class_to_int(s)
+def balanced_value(code):
+    n = 0
+    for c in code:
+        n = 26 * n + ord(c) - 110
+    return ZZ(n)
+
+
+def transcendental_code(lower):
+    """
+    The coefficients ``lower`` = [b_1, ..., b_k] in balanced base 26, all
+    padded to the smallest common width.
+    """
+    width = max(len(balanced_code(b)) for b in lower)
+    return "".join(balanced_code(b, width) for b in lower)
+
+
+def transcendental_chunks(code, k):
+    """
+    The codes of b_1, ..., b_k in the transcendental part ``code`` of a label.
+    """
+    width = len(code) // k
+    return [code[i:i + width] for i in range(0, len(code), width)]
 
 
 @cached_function
@@ -172,11 +196,12 @@ def cyclotomic_product(orders):
 
 def split_label(label):
     """
-    Returns the tuple (q, rho, c, codes) for a label q.rho.c.b1_..._bk, where
-    codes is the list [b1, ..., bk] (empty when rho = 22).
+    Returns the tuple (q, rho, c, codes) for a label q.rho.c.t, where codes is
+    the list of the codes of b_1, ..., b_k in t (empty when rho = 22).
     """
-    q, rho, c, codes = LABEL_RE.fullmatch(label).groups()
-    return int(q), int(rho), c, codes.split("_") if codes else []
+    q, rho, c, t = LABEL_RE.fullmatch(label).groups()
+    q, rho = int(q), int(rho)
+    return q, rho, c, transcendental_chunks(t, (DEGREE - rho) // 2) if t else []
 
 
 def validate_label(label):
@@ -186,7 +211,7 @@ def validate_label(label):
     """
     match = LABEL_RE.fullmatch(label)
     if not match:
-        raise ValueError("it must be of the form %s, with q a prime power, rho an even integer between 0 and 22, and c and the bi consisting of lower case letters (with no final part when rho = 22)" % LABEL_FORM)
+        raise ValueError("it must be of the form %s, with q a prime power, rho an even integer between 0 and 22, and c and t consisting of lower case letters (with no t when rho = 22)" % LABEL_FORM)
     q, rho, c, codes = match.groups()
     if q[0] == "0" or not ZZ(q).is_prime_power():
         raise ValueError("it must be of the form %s, where q is a prime power" % LABEL_FORM)
@@ -198,13 +223,16 @@ def validate_label(label):
     if class_to_int(c) >= num_cyclotomic_parts(rho):
         raise ValueError("there are only %s cyclotomic parts of degree %s, so the cyclotomic code c must come before %s" % (num_cyclotomic_parts(rho), rho, cremona_letter_code(num_cyclotomic_parts(rho))))
     k = (DEGREE - rho) // 2
-    codes = codes.split("_") if codes else []
-    if len(codes) != k:
-        if k == 0:
+    if k == 0:
+        if codes:
             raise ValueError("when rho = 22 there is no transcendental part, so the label has the form q.22.c")
-        raise ValueError("when rho = %s the final part must be of the form b1_..._b%s, with %s components" % (rho, k, k))
-    if not all(encode_coeff(decode_coeff(b)) == b for b in codes):
-        raise ValueError("the coefficient codes b1, ..., b%s are not in normal form" % k)
+        return
+    if not codes:
+        raise ValueError("when rho = %s the label needs a transcendental part t, encoding %s coefficient%s" % (rho, k, "" if k == 1 else "s"))
+    if len(codes) % k:
+        raise ValueError("when rho = %s the transcendental part t encodes %s coefficients, so its length must be a multiple of %s" % (rho, k, k))
+    if len(codes) > k and all(b[0] == "n" for b in transcendental_chunks(codes, k)):
+        raise ValueError("the transcendental part t is padded with more leading n's than necessary")
 
 
 def label_to_poly(label):
@@ -212,7 +240,7 @@ def label_to_poly(label):
     The coefficients [a_0, ..., a_22] of P(T) determined by a (valid) label.
     """
     q, rho, c, codes = split_label(label)
-    lower = [decode_coeff(b) for b in codes]
+    lower = [balanced_value(b) for b in codes]
     trans = [q] + lower + lower[:-1][::-1] + [q] if lower else [q]
     P = cyclotomic_product(cyclotomic_orders(rho, class_to_int(c))) * PolynomialRing(ZZ, "T")(trans)
     return [ZZ(a) for a in P.padded_list(DEGREE + 1)]
@@ -257,7 +285,7 @@ def poly_to_label(coeffs):
         raise ValueError("the transcendental part must be palindromic with constant term q")
     label = "%s.%s.%s" % (q, rho, cremona_letter_code(cyclotomic_index(orders)))
     if k:
-        label += "." + "_".join(encode_coeff(trans[i]) for i in range(1, k + 1))
+        label += "." + transcendental_code([trans[i] for i in range(1, k + 1)])
     return label
 
 
@@ -337,10 +365,16 @@ def integer_display(n, factor_bound=10**24):
 
 def label_wbr(label):
     """
-    The label with line break opportunities after the underscores, since
-    labels of classes with large coefficients can be long.
+    The label with line break opportunities between the coefficient codes
+    when they take several letters each, since labels of classes with large
+    coefficients (such as base changes) can be long.
     """
-    return label.replace("_", "_<wbr>")
+    parts = label.split(".")
+    if len(parts) == 4 and LABEL_RE.fullmatch(label):
+        codes = split_label(label)[3]
+        if len(codes[0]) > 1:
+            parts[3] = "<wbr>".join(codes)
+    return ".".join(parts)
 
 
 def k3_class_link(label):
