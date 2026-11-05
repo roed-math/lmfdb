@@ -74,9 +74,9 @@ class K3FqStats(StatsDisplay):
         "p": "ag.base_field",
         "r": "ag.base_field",
         "sign": "k3.fq.sign",
-        "picard_rank": "k3.fq.picard_rank",
-        "geometric_picard_rank": "k3.fq.geometric_picard_rank",
-        "height": "k3.fq.height",
+        "picard_rank": "k3.picard_rank",
+        "geometric_picard_rank": "k3.geometric_picard_rank",
+        "height": "k3.height",
         "angle_rank": "k3.fq.angle_rank",
         "angle_corank": "k3.fq.angle_rank",
         "newton_elevation": "k3.fq.newton_elevation",
@@ -84,9 +84,9 @@ class K3FqStats(StatsDisplay):
         "twist_count": "k3.fq.twist",
         "max_twist_degree": "k3.fq.twist",
         "ej_condition": "k3.fq.ej_condition",
-        "has_nonnegative_counts": "k3.fq.has_nonnegative_counts",
-        "has_count_growth": "k3.fq.has_count_growth",
-        "is_pointless": "k3.fq.pointless",
+        "has_nonnegative_counts": "k3.fq.count_conditions",
+        "has_count_growth": "k3.fq.count_conditions",
+        "is_pointless": "k3.fq.point_counts",
         "is_primitive": "k3.fq.primitive",
         "is_ordinary": "k3.fq.newton_polygon",
         "is_supersingular": "k3.fq.newton_polygon",
@@ -239,7 +239,7 @@ class K3FqStats(StatsDisplay):
 
     @lazy_attribute
     def class_knowl(self):
-        return display_knowl("k3.fq.k3_polynomial", "classes of motives of K3 type")
+        return display_knowl("k3.fq.motive", "classes of motives of K3 type")
 
     def _field_list(self):
         qs = self.qs

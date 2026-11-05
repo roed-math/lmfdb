@@ -13,13 +13,13 @@
     <td>By {{ KNOWL('ag.base_field', 'base field cardinality') }}:</td>
     <td colspan="3">{% for q in info.stats.qs %} <a href="?q={{q}}">{{q}}</a>&nbsp; {% endfor %}</td>
   </tr><tr>
-    <td>By {{ KNOWL('k3.fq.picard_rank', 'Picard rank') }}:</td>
+    <td>By {{ KNOWL('k3.picard_rank', 'Picard rank') }}:</td>
     <td colspan="3">{% for r in info.picard_ranks %} <a href="?picard_rank={{r}}">{{r}}</a>&nbsp; {% endfor %}</td>
   </tr><tr>
-    <td>By {{ KNOWL('k3.fq.geometric_picard_rank', 'geometric Picard rank') }}:</td>
+    <td>By {{ KNOWL('k3.geometric_picard_rank', 'geometric Picard rank') }}:</td>
     <td colspan="3">{% for r in info.geometric_picard_ranks %} <a href="?geometric_picard_rank={{r}}">{{r}}</a>&nbsp; {% endfor %}</td>
   </tr><tr>
-    <td>By {{ KNOWL('k3.fq.height', 'height') }}:</td>
+    <td>By {{ KNOWL('k3.height', 'height') }}:</td>
     <td>{% for h in info.heights %} <a href="?height={{h}}">{{h}}</a>&nbsp; {% endfor %} <a href="?height=inf">$\infty$</a></td>
     <td style="padding-left:80px;">By {{ KNOWL('k3.fq.sign', 'sign') }}:</td>
     <td><a href="?sign=1">$+1$</a>&nbsp; <a href="?sign=-1">$-1$</a></td>

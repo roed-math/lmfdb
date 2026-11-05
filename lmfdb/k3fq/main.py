@@ -6,7 +6,7 @@ from sage.all import ZZ
 
 from lmfdb.utils import (
     to_dict, flash_error, display_knowl, coeff_to_poly,
-    SearchArray, TextBox, SelectBox, YesNoBox, YesNoMaybeBox, CountBox,
+    SearchArray, TextBox, TextBoxWithSelect, SelectBox, YesNoBox, YesNoMaybeBox, CountBox,
     parse_ints, parse_bool, parse_bool_unknown, parse_restricted,
     search_wrap, count_wrap, redirect_no_cache,
 )
@@ -266,6 +266,9 @@ NEWTON_OPTIONS = {
 BOOL_COLUMNS = ["ej_condition", "has_nonnegative_counts", "has_count_growth", "is_pointless",
                 "is_primitive", "transcendental_irreducible", "has_k3_newton_polygon"]
 
+# The select box next to the point count input chooses the variety
+POINT_COUNT_COLUMNS = {"": "k3_count", "cubic": "cubic_count", "gm": "gm_count", "verra": "verra_count"}
+
 REALIZABLE_COLUMNS = ["realizable_k3", "realizable_nck3", "realizable_cubic", "realizable_nccubic",
                       "realizable_gm", "realizable_ncgm", "realizable_verra", "realizable_ncverra",
                       "realizable_kummer"]
@@ -291,7 +294,11 @@ def common_parse(info, query):
     parse_ints(info, query, "geometric_extension_degree", name="geometric extension degree")
     q = query.get("q")
     parse_initial_coefficients(info, query, "initial_coefficients", qfield="poly_str", q=q if isinstance(q, int) else None)
-    parse_signed_range(info, query, "k3_count", name="point count")
+    count_type = info.get("point_count_type", "")
+    if count_type not in POINT_COUNT_COLUMNS:
+        flash_error("%s is not a valid input for the variety type of point counts.", count_type)
+        raise SearchParsingError("Invalid variety type")
+    parse_signed_range(info, query, "point_count", qfield=POINT_COUNT_COLUMNS[count_type], name="point count")
     parse_ints(info, query, "artin_tate_value", name="Artin-Tate value")
     parse_signed_range(info, query, "ns_disc_class", name="NS discriminant class")
     for col in BOOL_COLUMNS:
@@ -361,18 +368,19 @@ class K3FqSearchArray(SearchArray):
             label="Sign",
             knowl="k3.fq.sign",
             options=[("", ""), ("1", "+1"), ("-1", "&minus;1")],
+            example_col=True,
         )
         picard_rank = TextBox(
             "picard_rank",
             label="Picard rank",
-            knowl="k3.fq.picard_rank",
+            knowl="k3.picard_rank",
             example="2",
             example_span="2 or 1-4",
         )
         geometric_picard_rank = TextBox(
             "geometric_picard_rank",
             label="Geometric Picard rank",
-            knowl="k3.fq.geometric_picard_rank",
+            knowl="k3.geometric_picard_rank",
             short_label="Geom. Picard rank",
             example="4",
             example_span="4 or 2-10",
@@ -380,7 +388,7 @@ class K3FqSearchArray(SearchArray):
         height = TextBox(
             "height",
             label="Height",
-            knowl="k3.fq.height",
+            knowl="k3.height",
             example="2",
             example_span="2, 1-3 or inf",
         )
@@ -394,6 +402,7 @@ class K3FqSearchArray(SearchArray):
                      ("neither", "neither"),
                      ("not_ordinary", "not ordinary"),
                      ("not_supersingular", "not supersingular")],
+            example_col=True,
         )
         angle_rank = TextBox(
             "angle_rank",
@@ -434,11 +443,16 @@ class K3FqSearchArray(SearchArray):
             knowl="k3.fq.initial_coefficients",
             example="[-1, 3]",
         )
-        k3_count = TextBox(
-            "k3_count",
-            label=r"Points on K3 surface",
+        point_count_type = SelectBox(
+            "point_count_type",
+            options=[("", "K3"), ("cubic", "cubic"), ("gm", "GM"), ("verra", "Verra")],
+        )
+        point_count = TextBoxWithSelect(
+            "point_count",
+            label="Points on",
+            short_label="Points on",
+            select_box=point_count_type,
             knowl="k3.fq.point_counts",
-            short_label=r"K3 points",
             example="5",
             example_span="5 or -10-10",
         )
@@ -453,7 +467,7 @@ class K3FqSearchArray(SearchArray):
         ns_disc_class = TextBox(
             "ns_disc_class",
             label="NS discriminant class",
-            knowl="k3.fq.ns_disc_class",
+            knowl="k3.fq.artin_tate",
             short_label="NS disc. class",
             example="-3",
             example_span="-3 or 1-5",
@@ -464,27 +478,32 @@ class K3FqSearchArray(SearchArray):
             label="Artin&ndash;Tate condition",
             knowl="k3.fq.ej_condition",
             short_label="AT condition",
+            example_col=True,
         )
         has_nonnegative_counts = YesNoBox(
             "has_nonnegative_counts",
             label="Nonnegative counts",
-            knowl="k3.fq.has_nonnegative_counts",
+            knowl="k3.fq.count_conditions",
             advanced=True,
+            example_col=True,
         )
         has_count_growth = YesNoBox(
             "has_count_growth",
             label="Count growth",
-            knowl="k3.fq.has_count_growth",
+            knowl="k3.fq.count_conditions",
+            example_col=True,
         )
         is_pointless = YesNoBox(
             "is_pointless",
             label="Pointless",
-            knowl="k3.fq.pointless",
+            knowl="k3.fq.point_counts",
+            example_col=True,
         )
         is_primitive = YesNoBox(
             "is_primitive",
             label="Primitive",
             knowl="k3.fq.primitive",
+            example_col=True,
         )
         transcendental_irreducible = YesNoBox(
             "transcendental_irreducible",
@@ -492,12 +511,14 @@ class K3FqSearchArray(SearchArray):
             knowl="k3.fq.transcendental_part",
             short_label="Irred. trans. part",
             advanced=True,
+            example_col=True,
         )
         has_k3_newton_polygon = YesNoBox(
             "has_k3_newton_polygon",
             label="K3 Newton polygon",
             knowl="k3.fq.newton_polygon",
             advanced=True,
+            example_col=True,
         )
         realizable = {}
         for col, lab, short in [
@@ -516,6 +537,7 @@ class K3FqSearchArray(SearchArray):
                 knowl="k3.fq.realizability",
                 short_label=short,
                 advanced=(col != "realizable_k3"),
+                example_col=True,
             )
         twist_count = TextBox(
             "twist_count",
@@ -554,7 +576,7 @@ class K3FqSearchArray(SearchArray):
         number_field = TextBox(
             "number_field",
             label="Number field",
-            knowl="k3.fq.transcendental_number_field",
+            knowl="k3.fq.transcendental_part",
             example="20.0.123.1",
             example_span="a label",
             advanced=True,
@@ -562,7 +584,7 @@ class K3FqSearchArray(SearchArray):
         galois_group = TextBox(
             "galois_group",
             label="Galois group",
-            knowl="k3.fq.transcendental_galois_group",
+            knowl="k3.fq.transcendental_part",
             example="20T1",
             example_span="20T1, or a list of " + display_knowl("nf.galois_group.name", "group names"),
             advanced=True,
@@ -571,7 +593,7 @@ class K3FqSearchArray(SearchArray):
 
         self.refine_array = [
             [q, p, sign, picard_rank, geometric_picard_rank],
-            [height, newton, initial_coefficients, k3_count, ej_condition],
+            [height, newton, initial_coefficients, point_count, ej_condition],
             [has_count_growth, is_pointless, is_primitive, realizable["realizable_k3"], has_nonnegative_counts],
             [r, angle_rank, angle_corank, newton_elevation, geometric_extension_degree],
             [artin_tate_value, ns_disc_class, transcendental_irreducible, has_k3_newton_polygon, twist_count],
@@ -584,7 +606,7 @@ class K3FqSearchArray(SearchArray):
             [p, picard_rank],
             [geometric_picard_rank, height],
             [newton, initial_coefficients],
-            [k3_count, ej_condition],
+            [point_count, ej_condition],
             [has_count_growth, is_pointless],
             [is_primitive, realizable["realizable_k3"]],
             [r, has_nonnegative_counts],
@@ -633,9 +655,9 @@ k3fq_columns = SearchColumns([
     MathCol("field", "ag.base_field", "Base field", download_col="q"),
     MathCol("p", "ag.base_field", "Base char.", short_title="base characteristic", default=False),
     MathCol("sign_display", "k3.fq.sign", "Sign", download_col="sign"),
-    OptMathCol("picard_rank", "k3.fq.picard_rank", r"$\rho$", short_title="Picard rank"),
-    OptMathCol("geometric_picard_rank", "k3.fq.geometric_picard_rank", r"$\bar\rho$", short_title="geometric Picard rank"),
-    OptMathCol("height_display", "k3.fq.height", "Height", download_col="height"),
+    OptMathCol("picard_rank", "k3.picard_rank", r"$\rho$", short_title="Picard rank"),
+    OptMathCol("geometric_picard_rank", "k3.geometric_picard_rank", r"$\bar\rho$", short_title="geometric Picard rank"),
+    OptMathCol("height_display", "k3.height", "Height", download_col="height"),
     CheckCol("is_ordinary", "k3.fq.newton_polygon", "Ordinary", default=False),
     CheckCol("is_supersingular", "k3.fq.newton_polygon", "Supersingular", default=False),
     OptMathCol("pretty_slopes", "k3.fq.newton_polygon", "Newton slopes", download_col="slopes", default=False),
@@ -645,13 +667,16 @@ k3fq_columns = SearchColumns([
     OptMathCol("geometric_extension_degree", "k3.fq.geometric_extension_degree", "Geom. ext. degree", short_title="geometric extension degree", default=False),
     OptMathCol("cyclotomic_display", "k3.fq.cyclotomic_part", "Cyclotomic factors", download_col="cyclotomic_factors", default=False),
     OptMathCol("artin_tate_value", "k3.fq.artin_tate", "$AT_1$", short_title="Artin-Tate value", default=False),
-    OptMathCol("ns_disc_class", "k3.fq.ns_disc_class", "NS disc. class", short_title="NS discriminant class", default=False),
+    OptMathCol("ns_disc_class", "k3.fq.artin_tate", "NS disc. class", short_title="NS discriminant class", default=False),
     CheckCol("ej_condition", "k3.fq.ej_condition", "AT condition", short_title="Artin-Tate condition", default=False),
     OptMathCol("k3_count", "k3.fq.point_counts", r"$\#X(\mathbb{F}_q)$", short_title="Fq points on K3"),
     OptMathCol("k3_counts", "k3.fq.point_counts", r"$\#X(\mathbb{F}_{q^n})$", short_title="Fq^n points on K3", default=False),
-    CheckCol("has_nonnegative_counts", "k3.fq.has_nonnegative_counts", "Nonneg. counts", short_title="nonnegative counts", default=False),
-    CheckCol("has_count_growth", "k3.fq.has_count_growth", "Count growth", default=False),
-    CheckCol("is_pointless", "k3.fq.pointless", "Pointless", default=False),
+    OptMathCol("cubic_count", "k3.fq.point_counts", r"$\#Y_{\mathrm{cub}}(\mathbb{F}_q)$", short_title="Fq points on cubic", default=False),
+    OptMathCol("gm_count", "k3.fq.point_counts", r"$\#Y_{\mathrm{GM}}(\mathbb{F}_q)$", short_title="Fq points on GM", default=False),
+    OptMathCol("verra_count", "k3.fq.point_counts", r"$\#Y_{\mathrm{Ver}}(\mathbb{F}_q)$", short_title="Fq points on Verra", default=False),
+    CheckCol("has_nonnegative_counts", "k3.fq.count_conditions", "Nonneg. counts", short_title="nonnegative counts", default=False),
+    CheckCol("has_count_growth", "k3.fq.count_conditions", "Count growth", default=False),
+    CheckCol("is_pointless", "k3.fq.point_counts", "Pointless", default=False),
     CheckCol("is_primitive", "k3.fq.primitive", "Primitive", default=False),
     OptMathCol("twist_count", "k3.fq.twist", "Num. twists", default=False),
     OptMathCol("max_twist_degree", "k3.fq.twist", "Max. twist degree", default=False),
@@ -665,12 +690,12 @@ k3fq_columns = SearchColumns([
     realizable_col("realizable_ncverra", "NC Verra"),
     realizable_col("realizable_kummer", "Kummer"),
     OptMathCol("num_lattices", "k3.fq.lattices", "Num. lattices", default=False),
-    SearchCol("galois_groups_pretty", "k3.fq.transcendental_galois_group", "Galois groups", download_col="galois_groups"),
-    OptMathCol("formatted_polynomial", "k3.fq.k3_polynomial", "$P(T)$", download_col="poly", default=False)],
+    SearchCol("galois_groups_pretty", "k3.fq.transcendental_part", "Galois groups", download_col="galois_groups"),
+    OptMathCol("formatted_polynomial", "k3.fq.motive", "$P(T)$", download_col="poly", default=False)],
     db_cols=["label", "q", "p", "r", "sign", "poly", "picard_rank", "geometric_picard_rank", "height",
              "is_ordinary", "is_supersingular", "slopes", "newton_elevation", "angle_rank", "angle_corank",
              "geometric_extension_degree", "cyclotomic_factors", "artin_tate_value", "ns_disc_class",
-             "ej_condition", "k3_count", "k3_counts", "has_nonnegative_counts", "has_count_growth",
+             "ej_condition", "k3_count", "k3_counts", "cubic_count", "gm_count", "verra_count", "has_nonnegative_counts", "has_count_growth",
              "is_pointless", "is_primitive", "twist_count", "max_twist_degree", "galois_groups",
              "num_lattices"] + REALIZABLE_COLUMNS)
 

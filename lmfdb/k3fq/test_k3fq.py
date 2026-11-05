@@ -88,6 +88,11 @@ class K3FqTest(LmfdbTest):
         self.check_args("/Motive/K3/Fq/?q=2&initial_coefficients=[-44,462]", SS_LABEL)
         self.check_args("/Motive/K3/Fq/?q=2&picard_rank=22&newton=supersingular", SS_LABEL)
         self.check_args("/Motive/K3/Fq/?height=foo", "is not a valid input")
+        # 2(1-T)^22 has 1 + 2^2 + 44 = 49 points as a K3 surface, so 1 + 2^2 + 2^4 + 2*49 = 119 as a cubic fourfold
+        self.check_args("/Motive/K3/Fq/?q=2&point_count=49", SS_LABEL)
+        self.check_args("/Motive/K3/Fq/?q=2&point_count=119&point_count_type=cubic", SS_LABEL)
+        self.check_args("/Motive/K3/Fq/?q=2&point_count=123&point_count_type=gm", SS_LABEL)
+        self.check_args("/Motive/K3/Fq/?q=2&point_count=5&point_count_type=bogus", "is not a valid input")
 
     def test_counts(self):
         self.check_args("/Motive/K3/Fq/?search_type=Counts&q=2-", "Picard rank")

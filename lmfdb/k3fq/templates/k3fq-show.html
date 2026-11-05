@@ -24,11 +24,11 @@
 <table>
   <tr><td>{{ KNOWL('ag.base_field', title="Base field") }}:</td><td>&nbsp;&nbsp;${{ cl.field() }}$</td></tr>
   <tr><td>{{ KNOWL('k3.fq.sign', title="Sign") }}:</td><td>&nbsp;&nbsp;${{ cl.sign_display }}$</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.k3_polynomial', title="Polynomial") }}:</td><td>&nbsp;&nbsp;$P(T) = $ {{ cl.polynomial_display | safe }}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.motive', title="Polynomial") }}:</td><td>&nbsp;&nbsp;$P(T) = $ {{ cl.polynomial_display | safe }}</td></tr>
   {% if not cl.is_irreducible_display %}
   <tr><td></td><td>&nbsp;&nbsp;$\phantom{P(T)} = {{ cl.factored_polynomial }}$</td></tr>
   {% endif %}
-  <tr><td>{{ KNOWL('k3.fq.l_polynomial', title="L-polynomial") }}:</td><td>&nbsp;&nbsp;$L(T) = q^{-1}P(qT) = $ {{ cl.lpolynomial_display | safe }}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.motive', title="L-polynomial") }}:</td><td>&nbsp;&nbsp;$L(T) = q^{-1}P(qT) = $ {{ cl.lpolynomial_display | safe }}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.real_polynomial', title="Real polynomial") }}:</td><td>&nbsp;&nbsp;{% if cl.real_poly_display %}$h(x) = $ {{ cl.real_poly_display | safe }}{% else %}{{ na() }}{% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.frobenius_angles', title="Frobenius angles") }}:</td><td>&nbsp;&nbsp;{{ cl.frob_angles() | safe }}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.angle_rank', title="Angle rank") }}:</td><td>&nbsp;&nbsp;{% if cl.angle_rank is none %}{{ na() }}{% else %}${{ cl.angle_rank }}${% endif %}</td></tr>
@@ -50,27 +50,27 @@ This class is neither {{ KNOWL('k3.fq.newton_polygon', title='ordinary') }} nor 
 
 <table>
   <tr><td>{{ KNOWL('k3.fq.newton_polygon', title="Slopes") }}:</td><td>&nbsp;&nbsp;{{ cl.display_slopes() | safe }}</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.height', title="Height") }}:</td><td>&nbsp;&nbsp;{% if cl.height_display is none %}{{ na() }}{% else %}${{ cl.height_display }}${% endif %}</td></tr>
+  <tr><td>{{ KNOWL('k3.height', title="Height") }}:</td><td>&nbsp;&nbsp;{% if cl.height_display is none %}{{ na() }}{% else %}${{ cl.height_display }}${% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.newton_polygon', title="K3 Newton polygon") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.has_k3_newton_polygon) }}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.newton_elevation', title="Newton elevation") }}:</td><td>&nbsp;&nbsp;{% if cl.newton_elevation is none %}{{ na() }}{% else %}${{ cl.newton_elevation }}${% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.newton_elevation', title="Newton coelevation") }}:</td><td>&nbsp;&nbsp;{% if cl.newton_coelevation is none %}{{ na() }}{% else %}${{ cl.newton_coelevation }}${% endif %}</td></tr>
 </table>
 
-<h2>{{ KNOWL('k3.fq.picard_rank', title="Picard ranks") }} and the {{ KNOWL('k3.fq.artin_tate', title="Artin&ndash;Tate formula") }}</h2>
+<h2>{{ KNOWL('k3.picard_rank', title="Picard ranks") }} and the {{ KNOWL('k3.fq.artin_tate', title="Artin&ndash;Tate formula") }}</h2>
 
 <table>
-  <tr><td>{{ KNOWL('k3.fq.picard_rank', title="Picard rank") }}:</td><td>&nbsp;&nbsp;{% if cl.picard_rank is none %}{{ na() }}{% else %}$\rho = {{ cl.picard_rank }}${% endif %}</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.geometric_picard_rank', title="Geometric Picard rank") }}:</td><td>&nbsp;&nbsp;{% if cl.geometric_picard_rank is none %}{{ na() }}{% else %}$\bar\rho = {{ cl.geometric_picard_rank }}${% endif %}</td></tr>
+  <tr><td>{{ KNOWL('k3.picard_rank', title="Picard rank") }}:</td><td>&nbsp;&nbsp;{% if cl.picard_rank is none %}{{ na() }}{% else %}$\rho = {{ cl.picard_rank }}${% endif %}</td></tr>
+  <tr><td>{{ KNOWL('k3.geometric_picard_rank', title="Geometric Picard rank") }}:</td><td>&nbsp;&nbsp;{% if cl.geometric_picard_rank is none %}{{ na() }}{% else %}$\bar\rho = {{ cl.geometric_picard_rank }}${% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.cyclotomic_part', title="Cyclotomic factors") }}:</td><td>&nbsp;&nbsp;{% if cl.cyclotomic_display is none %}{{ na() }}{% else %}${{ cl.cyclotomic_display }}${% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.geometric_extension_degree', title="Geometric extension degree") }}:</td><td>&nbsp;&nbsp;{% if cl.geometric_extension_degree is none %}{{ na() }}{% else %}${{ cl.geometric_extension_degree }}${% endif %}</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.ns_disc_class', title="NS discriminant class") }}:</td><td>&nbsp;&nbsp;{% if cl.ns_disc_class is none %}{{ na("not defined" if cl.picard_rank == 0 else "not computed") }}{% else %}${{ cl.ns_disc_class }}${% endif %}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.artin_tate', title="NS discriminant class") }}:</td><td>&nbsp;&nbsp;{% if cl.ns_disc_class is none %}{{ na("not defined" if cl.picard_rank == 0 else "not computed") }}{% else %}${{ cl.ns_disc_class }}${% endif %}</td></tr>
   <tr><td>{{ KNOWL('k3.fq.ej_condition', title="Artin&ndash;Tate condition") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.ej_condition) }}</td></tr>
 </table>
 
 {% set at_rows = cl.artin_tate_table() %}
 {% if at_rows %}
 <p>
-The {{ KNOWL('k3.fq.picard_rank', title="Picard rank") }} $\rho_n$ and the {{ KNOWL('k3.fq.artin_tate', title="Artin&ndash;Tate value") }} $AT_n$ over $\F_{q^n}$, for the degrees $n$ at which the Picard rank can change:
+The {{ KNOWL('k3.picard_rank', title="Picard rank") }} $\rho_n$ and the {{ KNOWL('k3.fq.artin_tate', title="Artin&ndash;Tate value") }} $AT_n$ over $\F_{q^n}$, for the degrees $n$ at which the Picard rank can change:
 <table class="ntdata" style="margin-left:5%;">
   <thead><tr><th>$n$</th><th>Field</th><th>$\rho_n$</th><th>$AT_n$</th></tr></thead>
   <tbody>
@@ -101,7 +101,7 @@ The {{ KNOWL('k3.fq.picard_rank', title="Picard rank") }} $\rho_n$ and the {{ KN
 {% if factor_rows %}
 <p>
 <table class="ntdata" style="margin-left:5%;">
-  <thead><tr><th>Factor</th><th>Multiplicity</th><th>Degree</th><th>{{ KNOWL('k3.fq.transcendental_number_field', title="Number field") }}</th><th>{{ KNOWL('k3.fq.transcendental_galois_group', title="Galois group") }}</th></tr></thead>
+  <thead><tr><th>Factor</th><th>Multiplicity</th><th>Degree</th><th>{{ KNOWL('k3.fq.transcendental_part', title="Number field") }}</th><th>{{ KNOWL('k3.fq.transcendental_part', title="Galois group") }}</th></tr></thead>
   <tbody>
   {% for f, e, d, nf, gal in factor_rows %}
     <tr><td>{{ f | safe }}</td><td class="center">${{ e }}$</td><td class="center">${{ d }}$</td><td>{{ nf | safe }}</td><td>{{ gal | safe }}</td></tr>
@@ -154,9 +154,9 @@ The {{ KNOWL('k3.fq.picard_rank', title="Picard rank") }} $\rho_n$ and the {{ KN
 {% endif %}
 
 <table>
-  <tr><td>{{ KNOWL('k3.fq.has_nonnegative_counts', title="Nonnegative counts") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.has_nonnegative_counts) }}</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.has_count_growth', title="Count growth") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.has_count_growth) }}</td></tr>
-  <tr><td>{{ KNOWL('k3.fq.pointless', title="Pointless") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.is_pointless) }}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.count_conditions', title="Nonnegative counts") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.has_nonnegative_counts) }}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.count_conditions', title="Count growth") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.has_count_growth) }}</td></tr>
+  <tr><td>{{ KNOWL('k3.fq.point_counts', title="Pointless") }}:</td><td>&nbsp;&nbsp;{{ yn(cl.is_pointless) }}</td></tr>
 </table>
 
 <h2>{{ KNOWL('k3.fq.realizability', title="Realizability") }}</h2>
