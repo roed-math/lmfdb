@@ -183,13 +183,19 @@ def grant_website_access(db, role, edit=True):
             # only the names of users, which are shown as the authors of knowls
             db._execute(SQL("GRANT SELECT (username, full_name) ON userdb.users TO {0}").format(ident))
     if not edit:
-        writable = db._execute(SQL(
-            "SELECT 1 FROM information_schema.role_table_grants WHERE grantee = %s AND "
-            "((table_schema = 'public' AND table_name IN ('kwl_knowls', 'kwl_locks')) OR table_schema = 'userdb') "
-            "AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')"), [role]).fetchone()
-        if writable:
-            # for example through a role it is a member of
-            raise RuntimeError("%s can still write the knowls or users" % role)
+        # The privileges the role actually has, including those of roles it
+        # belongs to and of PUBLIC, which revoking its own cannot remove
+        tables = ["kwl_knowls", "kwl_locks", "userdb.users", "userdb.tokens"]
+        left = [rec[0] for rec in db._execute(SQL(
+            "SELECT t || ' ' || p FROM unnest(%s::text[]) t, unnest(ARRAY['INSERT', 'UPDATE', 'DELETE']) p "
+            "WHERE has_table_privilege(%s, t, p)"), [tables, role])]
+        left += ["userdb.users SELECT " + col for col in _user_columns(db)
+                 if col not in ("username", "full_name") and db._execute(SQL(
+                     "SELECT has_column_privilege(%s, 'userdb.users', %s, 'SELECT')"), [role, col]).fetchone()[0]]
+        if left:
+            raise RuntimeError(
+                "%s still has these privileges, through a role it belongs to or PUBLIC: %s"
+                % (role, ", ".join(left)))
     print("Granted %s access to the knowls and users (%s)" % (role, "read and write" if edit else "read only"))
 
 
