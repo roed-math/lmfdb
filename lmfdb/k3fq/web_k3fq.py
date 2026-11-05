@@ -545,7 +545,7 @@ class WebK3Fq():
             nf = nfs[i] if i < len(nfs) else None
             if nf:
                 pretty = field_pretty(nf)
-                nfdisp = '<a href="%s">%s</a>' % (url_for("number_fields.by_label", label=nf), nf if pretty == nf else "$%s$" % pretty)
+                nfdisp = '<a href="%s">%s</a>' % (url_for("number_fields.by_label", label=nf), pretty)
             elif i < len(nfcoeffs) and nfcoeffs[i]:
                 nfdisp = r"\(\Q[x]/(\)" + raw_typeset_poly(nfcoeffs[i], var="x", compress_threshold=100) + r"\()\)"
             else:

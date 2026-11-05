@@ -5,7 +5,7 @@ from flask import abort, render_template, url_for, request, redirect
 from sage.all import ZZ
 
 from lmfdb.utils import (
-    to_dict, flash_error, integer_options, display_knowl, coeff_to_poly,
+    to_dict, flash_error, display_knowl, coeff_to_poly,
     SearchArray, TextBox, SelectBox, YesNoBox, YesNoMaybeBox, CountBox,
     parse_ints, parse_bool, parse_bool_unknown, parse_restricted,
     search_wrap, count_wrap, redirect_no_cache,
@@ -708,6 +708,28 @@ def k3fq_search(info, query):
     common_parse(info, query)
 
 
+def in_ranges(n, spec):
+    """
+    Whether the integer n lies in one of the comma-separated ranges in spec
+    ("5", "2-7", "3-", "2..7", "..10").
+    """
+    for part in str(spec).replace(" ", "").replace("..", "-").split(","):
+        if not part:
+            continue
+        if part.startswith("-") and "-" not in part[1:]:
+            # "..b" (written "-b" after the replacement above)
+            if n <= int(part[1:]):
+                return True
+        elif "-" in part[1:]:
+            i = part.index("-", 1)
+            lo, hi = part[:i], part[i + 1:]
+            if (lo == "" or n >= int(lo)) and (hi == "" or n <= int(hi)):
+                return True
+        elif n == int(part):
+            return True
+    return False
+
+
 @count_wrap(
     template="k3fq-count-results.html",
     table=isog_table,
@@ -731,17 +753,13 @@ def k3fq_count(info, query):
         return url_for("k3fq.index", **info_copy)
 
     stats = K3FqStats()
-    if "picard_rank" in info:
-        info["row_heads"] = integer_options(info["picard_rank"], contained_in=stats.picard_ranks)
-    else:
-        info["row_heads"] = stats.picard_ranks
-    if "q" in info:
-        info["col_heads"] = integer_options(info["q"], contained_in=stats.qs)
-    else:
-        info["col_heads"] = stats.qs
-    if "p" in query:
-        ps = integer_options(info["p"], contained_in=stats.qs)
-        info["col_heads"] = [q for q in info["col_heads"] if any(q % p == 0 for p in ps)]
+    # Filter the available values directly, so that open-ended ranges such as
+    # "2-" work, and so that p is compared with the characteristic of each q.
+    info["row_heads"] = [r for r in stats.picard_ranks
+                         if "picard_rank" not in info or in_ranges(r, info["picard_rank"])]
+    info["col_heads"] = [q for q in stats.qs
+                         if ("q" not in info or in_ranges(q, info["q"]))
+                         and ("p" not in info or in_ranges(ZZ(q).prime_factors()[0], info["p"]))]
     if not info["col_heads"]:
         raise ValueError("Must include at least one base field")
     info["na_msg"] = '"n/a" means that there are no classes with this Picard rank over this field in the database.'
