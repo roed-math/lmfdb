@@ -708,26 +708,32 @@ def k3fq_search(info, query):
     common_parse(info, query)
 
 
-def in_ranges(n, spec):
+def _cond_matches(n, cond):
     """
-    Whether the integer n lies in one of the comma-separated ranges in spec
-    ("5", "2-7", "3-", "2..7", "..10").
+    Whether n satisfies a psycodict condition produced by parse_ints:
+    an integer, or a dictionary with $gte, $lte, $gt, $lt, $in.
     """
-    for part in str(spec).replace(" ", "").replace("..", "-").split(","):
-        if not part:
-            continue
-        if part.startswith("-") and "-" not in part[1:]:
-            # "..b" (written "-b" after the replacement above)
-            if n <= int(part[1:]):
-                return True
-        elif "-" in part[1:]:
-            i = part.index("-", 1)
-            lo, hi = part[:i], part[i + 1:]
-            if (lo == "" or n >= int(lo)) and (hi == "" or n <= int(hi)):
-                return True
-        elif n == int(part):
-            return True
-    return False
+    if isinstance(cond, dict):
+        for op, val in cond.items():
+            if op == "$in":
+                if n not in val:
+                    return False
+            elif not {"$gte": n >= val, "$lte": n <= val, "$gt": n > val, "$lt": n < val}[op]:
+                return False
+        return True
+    return n == cond
+
+
+def in_ranges(n, spec, field="x"):
+    """
+    Whether the integer n satisfies the search input spec, parsed exactly as
+    parse_ints parses it (so "4", "2-7", "3-", "2..7", "1,3-6", "2^2" all work).
+    """
+    query = {}
+    parse_ints({field: spec}, query, field)
+    if "$or" in query:
+        return any(_cond_matches(n, sub[field]) for sub in query["$or"])
+    return field not in query or _cond_matches(n, query[field])
 
 
 @count_wrap(

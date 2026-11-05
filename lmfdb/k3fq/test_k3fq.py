@@ -25,8 +25,9 @@ class K3FqLabelTest(unittest.TestCase):
         validate_label(SS_MINUS_LABEL)
         assert label_to_poly(SS_MINUS_LABEL)[-1] == -2
         from lmfdb.k3fq.main import in_ranges
-        assert in_ranges(5, "2-") and in_ranges(5, "..5") and in_ranges(5, "1,3-6") and in_ranges(5, "4..9")
+        assert in_ranges(5, "2-") and in_ranges(5, "1,3-6") and in_ranges(5, "4..9")
         assert not in_ranges(5, "6-") and not in_ranges(5, "2,3")
+        assert in_ranges(4, "2^2") and in_ranges(4, "2*2") and not in_ranges(5, "2^2")
         for bad in ["2.p.a_a", "6.p.a_a_a_a_a_a_a_a_a_a_a", "2.m.a_a_a_a_a_a_a_a_a_a_b",
                     "2.x.a_a_a_a_a_a_a_a_a_a_a", "2.p.aa_a_a_a_a_a_a_a_a_a_a", "02.p.a_a_a_a_a_a_a_a_a_a_a"]:
             self.assertRaises(ValueError, validate_label, bad)
@@ -67,6 +68,8 @@ class K3FqTest(LmfdbTest):
         self.check_args("/Motive/K3/Fq/?search_type=Counts&q=2-", "Picard rank")
         self.check_args("/Motive/K3/Fq/?search_type=Counts&picard_rank=10-", "Picard rank")
         self.check_args("/Motive/K3/Fq/?search_type=Counts&p=2-3", "Picard rank")
+        self.check_args("/Motive/K3/Fq/?search_type=Counts&q=2^2", "Picard rank")
+        self.check_args("/Motive/K3/Fq/?search_type=Counts&picard_rank=2*5&p=2^1", "Picard rank")
 
     def test_random(self):
         self.check_args("/Motive/K3/Fq/random", "Motive of K3 type")
