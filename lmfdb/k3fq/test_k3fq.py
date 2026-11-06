@@ -74,6 +74,10 @@ class K3FqTest(LmfdbTest):
     def test_supersingular(self):
         self.check_args("/Motive/K3/Fq/" + SS_LABEL, ["supersingular", r"\infty", r"( 1 - T )^{22}", "Transcendental part"])
 
+    def test_census_class(self):
+        # a class from the quartic census over F_2: contains a K3 surface, with a polarization of degree 4
+        self.check_args("/Motive/K3/Fq/2.18.msv.nk", ["Polarization degrees", "$4$ (other degrees may occur)"])
+
     def test_sign_minus(self):
         self.check_args("/Motive/K3/Fq/" + SS_MINUS_LABEL, ["$-1$", r"\rho = 21"])
 

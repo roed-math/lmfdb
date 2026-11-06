@@ -400,6 +400,7 @@ ISOG_COLUMNS = [
     "twists", "max_twist_degree", "kummer_av_classes", "realizable_k3", "realizable_nck3",
     "realizable_cubic", "realizable_nccubic", "realizable_gm", "realizable_ncgm",
     "realizable_verra", "realizable_ncverra", "realizable_kummer", "polarization_degrees",
+    "polarization_degrees_complete",
     "num_lattices", "min_ample_degree", "min_quasi_ample_degree",
 ]
 
@@ -743,11 +744,18 @@ class WebK3Fq():
         return ", ".join(av_class_link(lab) for lab in self.kummer_av_classes)
 
     def polarization_degrees_display(self):
+        """
+        The known polarization degrees, saying whether other degrees may occur.
+        """
         if self.polarization_degrees is None:
             return None
+        complete = getattr(self, "polarization_degrees_complete", None)
         if not self.polarization_degrees:
-            return "none"
-        return ", ".join("$%s$" % d for d in self.polarization_degrees)
+            return "none" if complete else "none known"
+        ans = ", ".join("$%s$" % d for d in self.polarization_degrees)
+        if not complete:
+            ans += " (other degrees may occur)"
+        return ans
 
     #########################
     #   Base change and twists
