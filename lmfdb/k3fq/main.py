@@ -749,16 +749,37 @@ def _cond_matches(n, cond):
     return n == cond
 
 
+def _query_matches(n, query, field):
+    """
+    Whether n satisfies a psycodict query on the single column ``field``, as
+    produced by parse_ints: conditions on the field, combined with $or, $and
+    and $not (the last two come from negated inputs such as "~2-4").
+    """
+    for key, val in query.items():
+        if key == field:
+            ok = _cond_matches(n, val)
+        elif key == "$or":
+            ok = any(_query_matches(n, sub, field) for sub in val)
+        elif key == "$and":
+            ok = all(_query_matches(n, sub, field) for sub in val)
+        elif key == "$not":
+            ok = not _query_matches(n, val, field)
+        else:
+            raise ValueError("unexpected key %s in a parsed query" % key)
+        if not ok:
+            return False
+    return True
+
+
 def in_ranges(n, spec, field="x"):
     """
     Whether the integer n satisfies the search input spec, parsed exactly as
-    parse_ints parses it (so "4", "2-7", "3-", "2..7", "1,3-6", "2^2" all work).
+    parse_ints parses it (so "4", "2-7", "3-", "2..7", "1,3-6", "2^2" and
+    negations such as "~2" or "~2-4" all work).
     """
     query = {}
     parse_ints({field: spec}, query, field)
-    if "$or" in query:
-        return any(_cond_matches(n, sub[field]) for sub in query["$or"])
-    return field not in query or _cond_matches(n, query[field])
+    return _query_matches(n, query, field)
 
 
 @count_wrap(

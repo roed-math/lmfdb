@@ -48,6 +48,11 @@ class K3FqLabelTest(unittest.TestCase):
         assert in_ranges(5, "2-") and in_ranges(5, "1,3-6") and in_ranges(5, "4..9")
         assert not in_ranges(5, "6-") and not in_ranges(5, "2,3")
         assert in_ranges(4, "2^2") and in_ranges(4, "2*2") and not in_ranges(5, "2^2")
+        # negated singletons, ranges and unions
+        assert not in_ranges(2, "~2") and in_ranges(3, "~2")
+        assert not in_ranges(3, "~2-4") and in_ranges(5, "~2-4") and in_ranges(1, "~2-4")
+        assert not in_ranges(4, "~2,4") and in_ranges(3, "~2,4")
+        assert not in_ranges(4, "~2^2") and in_ranges(5, "~2^2")
         for bad in ["2.p.a_a", "2.p.abs_ru_aeom_vqs_aczxs_imtm_atkou_bkkbs_aceprc_cvpea_adchca",
                     "6.20.a.o", "02.20.a.o", "1.20.a.o", "2.21.a.o", "2.020.a.o", "2.24.a", "2.22",
                     "2.22.ab", "2.22.dmcd", "2.22.a.o", "2.20.a", "2.20.a.", "2.20.a.o_o", "2.18.a.ooo",
