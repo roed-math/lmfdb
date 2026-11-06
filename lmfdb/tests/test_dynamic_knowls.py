@@ -264,7 +264,7 @@ class KnowlEditorTest(LmfdbTest):
                 data = {"content": "Preview text", "footer": "0"}
                 if token is not None:
                     data["csrf_token"] = token
-                with patch("lmfdb_utils.knowledge.main.Knowl", side_effect=AssertionError("Preview read the database before checking the token")):
+                with patch("lmfdb.knowledge.main.Knowl", side_effect=AssertionError("Preview read the database before checking the token")):
                     page = self.tc.post("/knowledge/preview/nf.degree", data=data)
                 assert page.status_code == 400
 
@@ -276,7 +276,7 @@ class KnowlEditorTest(LmfdbTest):
                 data = {"id": "nf.degree", "title": "Degree", "content": "Preview text"}
                 if token is not None:
                     data["csrf_token"] = token
-                with patch("lmfdb_utils.knowledge.main.Knowl", side_effect=AssertionError("Save read the database before checking the token")):
+                with patch("lmfdb.knowledge.main.Knowl", side_effect=AssertionError("Save read the database before checking the token")):
                     page = self.tc.post("/knowledge/save", data=data)
                 assert page.status_code == 400
 
