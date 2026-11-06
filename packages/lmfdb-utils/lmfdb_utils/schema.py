@@ -186,9 +186,12 @@ def grant_website_access(db, role, edit=True):
         # The privileges the role actually has, including those of roles it
         # belongs to and of PUBLIC, which revoking its own cannot remove
         tables = ["kwl_knowls", "kwl_locks", "userdb.users", "userdb.tokens"]
+        # has_any_column_privilege also sees grants on single columns, such as
+        # UPDATE (content) ON kwl_knowls; DELETE can only be granted on tables
         left = [rec[0] for rec in db._execute(SQL(
             "SELECT t || ' ' || p FROM unnest(%s::text[]) t, unnest(ARRAY['INSERT', 'UPDATE', 'DELETE']) p "
-            "WHERE has_table_privilege(%s, t, p)"), [tables, role])]
+            "WHERE CASE WHEN p = 'DELETE' THEN has_table_privilege(%s, t, p) "
+            "ELSE has_any_column_privilege(%s, t, p) END"), [tables, role, role])]
         left += ["userdb.users SELECT " + col for col in _user_columns(db)
                  if col not in ("username", "full_name") and db._execute(SQL(
                      "SELECT has_column_privilege(%s, 'userdb.users', %s, 'SELECT')"), [role, col]).fetchone()[0]]
