@@ -97,8 +97,8 @@ class LMFDBSearchTable(_ClientSearchTable):
         - ``other_table`` -- a string, the name of the other table.
         - ``keep_old`` -- if true, new knowls for this table will be created from the column knowls for the old table.  Otherwise, the old knowls will be renamed, or deleted if they are not columns of this table.
         """
-        from lmfdb_utils.knowledge.knowl import knowldb
-        from lmfdb_utils.datetime_utils import utc_now_naive
+        from lmfdb.knowledge.knowl import knowldb
+        from lmfdb.utils.datetime_utils import utc_now_naive
         knowls = knowldb.get_column_description(other_table)
         with DelayCommit(self):
             for col, knowl in knowls.items():
@@ -411,7 +411,7 @@ class LMFDBDatabase(_ClientDatabase):
         """
         from . import website # loads all the modules
         assert website
-        from lmfdb_utils.display_stats import StatsDisplay
+        from lmfdb.utils.display_stats import StatsDisplay
 
         def find_subs(L):
             # Assume no multiple inheritance

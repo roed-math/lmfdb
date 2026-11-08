@@ -7,6 +7,27 @@ websites can use too; they are re-exported here together with the ones
 specific to the LMFDB, so that ``from lmfdb.utils import ...`` gives both.
 """
 
+import sys as _sys
+import importlib as _importlib
+
+# The modules that moved to lmfdb-utils keep their old names, so that
+# ``from lmfdb.utils.search_columns import LinkCol`` and the like go on
+# working, in the LMFDB and in scripts using it.  The old name is the same
+# module object, not a copy, so patching lmfdb.utils.search_columns.X in a
+# test patches the code that runs.  (lmfdb.utils.search_parsing is only the
+# generic parsers: the LMFDB's own are in lmfdb.utils.lmfdb_search_parsing.)
+MOVED_TO_LMFDB_UTILS = [
+    "color", "common_regex", "csrf", "datetime_utils", "display_stats",
+    "downloader", "place_code", "random_wrap", "search_boxes",
+    "search_columns", "search_parsing", "search_wrapper", "utilities",
+    "web_display",
+]
+for _name in MOVED_TO_LMFDB_UTILS:
+    _module = _importlib.import_module("lmfdb_utils." + _name)
+    _sys.modules[__name__ + "." + _name] = _module
+    globals()[_name] = _module
+del _name, _module
+
 # make pyflakes happy, define interface for import *
 __all__ = ['request', 'make_response', 'flash', 'url_for', 'render_template',
            'send_file', 'list_to_factored_poly_otherorder', 'prop_int_pretty',
@@ -49,7 +70,7 @@ __all__ = ['request', 'make_response', 'flash', 'url_for', 'render_template',
            'SelectBox', 'YesNoBox', 'YesNoMaybeBox', 'ExcludeOnlyBox',
            'ParityBox', 'ParityMod', 'SubsetBox', 'SubsetNoExcludeBox', 'SelectBoxNoEg', 'CountBox',
            'SneakyTextBox', 'SneakySelectBox',
-           'Downloader', 'WebObj', 'send_file_from_beta',
+           'Downloader', 'WebObj', 'send_file_from_beta', 'redirect_to_beta',
            'formatters', 'proportioners', 'totaler', 'StatsDisplay',
            'Configuration', 'plural_form', 'pluralize',
            'names_and_urls', 'name_and_object_from_url',
@@ -173,7 +194,7 @@ from lmfdb_utils.search_boxes import (
     SneakyTextBox, SneakySelectBox,
     SearchButton, SearchButtonWithSelect, RowSpacer)
 from lmfdb_utils.downloader import Downloader
-from .beta import send_file_from_beta
+from .beta import send_file_from_beta, redirect_to_beta
 from lmfdb_utils.display_stats import formatters, proportioners, totaler, StatsDisplay
 from .config import Configuration
 from .names_and_urls import names_and_urls, name_and_object_from_url
