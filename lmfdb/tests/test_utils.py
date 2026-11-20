@@ -6,7 +6,15 @@
 # License as published by the Free Software Foundation; either
 # version 2 of the License, or (at your option) any later version.
 
+import os
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
+import urllib.request
 from unittest import mock
 
 from sage.all import var, QQ
@@ -43,6 +51,7 @@ from lmfdb.utils.completeness import (
 )
 
 from lmfdb.utils.downloader import OscarLanguage, SageLanguage
+from lmfdb.utils import reloader
 
 class UtilsTest(unittest.TestCase):
     """
@@ -532,3 +541,87 @@ class UtilsTest(unittest.TestCase):
         ]:
             with self.subTest(query=query):
                 self.assertIsNone(lookup["nf_fields"].precheck(query))
+
+
+# Run by ReloaderTest in a subprocess.  It loads the reloader module by path, so
+# the server process does not import lmfdb (and so does not connect to the
+# database).
+RELOADER_APP = """
+import atexit, importlib.util, os, sys, threading
+from werkzeug.serving import run_simple
+
+helper, watched, markers, port = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("reloader", helper)
+reloader = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(reloader)
+reloader.serve_on_main_thread_with_reloader()
+
+generation = sum(name.startswith("start") for name in os.listdir(markers))
+
+def app(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    on_main = threading.current_thread() is threading.main_thread()
+    return [f"{on_main} {generation}".encode()]
+
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    open(os.path.join(markers, f"start{generation}"), "w").close()
+    atexit.register(lambda: open(os.path.join(markers, f"exit{generation}"), "w").close())
+
+run_simple("127.0.0.1", int(port), app, use_reloader=True, reloader_type="stat",
+           extra_files=[watched], reloader_interval=0.1)
+"""
+
+
+class ReloaderTest(unittest.TestCase):
+    def test_restart_serves_on_main_thread_and_runs_atexit(self):
+        # Requests must run on the main thread, the only one where cypari2 has a
+        # PARI stack, and a reload must exit through normal interpreter shutdown,
+        # since Sage removes its temporary files in atexit hooks.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "app.py")
+            watched = os.path.join(tmp, "watched.txt")
+            markers = os.path.join(tmp, "markers")
+            log = os.path.join(tmp, "server.log")
+            os.mkdir(markers)
+            with open(script, "w") as F:
+                F.write(RELOADER_APP)
+            open(watched, "w").close()
+            with socket.socket() as sock:
+                sock.bind(("127.0.0.1", 0))
+                port = sock.getsockname()[1]
+
+            def get():
+                try:
+                    with opener.open(f"http://127.0.0.1:{port}/", timeout=5) as response:
+                        return response.read().decode()
+                except OSError:
+                    return None
+
+            def wait_for(condition, timeout=60):
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    if condition():
+                        return
+                    time.sleep(0.1)
+                with open(log) as F:
+                    self.fail("timed out; server log:\n" + F.read())
+
+            with open(log, "w") as out:
+                proc = subprocess.Popen(
+                    [sys.executable, script, reloader.__file__, watched, markers, str(port)],
+                    stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                wait_for(lambda: get() is not None)
+                self.assertEqual(get(), "True 0")
+                later = time.time() + 10
+                os.utime(watched, (later, later))
+                wait_for(lambda: get() == "True 1")
+                self.assertTrue(os.path.exists(os.path.join(markers, "exit0")))
+            finally:
+                os.killpg(proc.pid, signal.SIGTERM)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                    proc.wait()
