@@ -16,8 +16,19 @@ def serve_on_main_thread_with_reloader():
     """
     import werkzeug._reloader as wr
 
+    stock_run_with_reloader = wr.run_with_reloader
+
     def run_with_reloader(main_func, extra_files=None, exclude_patterns=None,
                           interval=1, reloader_type="auto"):
+        # Werkzeug 2.1+ passes srv.serve_forever.  Older versions pass a closure
+        # that builds the server itself, leaving no server for the watcher thread
+        # to stop, so they keep werkzeug's own reloader.
+        server = getattr(main_func, "__self__", None)
+        if server is None:
+            return stock_run_with_reloader(
+                main_func, extra_files=extra_files, exclude_patterns=exclude_patterns,
+                interval=interval, reloader_type=reloader_type
+            )
         signal.signal(signal.SIGTERM, lambda *args: sys.exit(0))
         reloader = wr.reloader_loops[reloader_type](
             extra_files=extra_files, exclude_patterns=exclude_patterns, interval=interval
@@ -25,8 +36,6 @@ def serve_on_main_thread_with_reloader():
         try:
             if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
                 wr.ensure_echo_on()
-                # run_simple passes srv.serve_forever
-                server = main_func.__self__
                 changed = threading.Event()
 
                 def watch():
