@@ -6,7 +6,9 @@
 # License as published by the Free Software Foundation; either
 # version 2 of the License, or (at your option) any later version.
 
+import importlib.metadata
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -576,7 +578,10 @@ class ReloaderTest(unittest.TestCase):
     def test_restart_serves_on_main_thread_and_runs_atexit(self):
         # Requests must run on the main thread, the only one where cypari2 has a
         # PARI stack, and a reload must exit through normal interpreter shutdown,
-        # since Sage removes its temporary files in atexit hooks.
+        # since Sage removes its temporary files in atexit hooks.  Werkzeug < 2.1
+        # keeps its own reloader, which serves from a background thread.
+        werkzeug_version = re.match(r"(\d+)\.(\d+)", importlib.metadata.version("werkzeug"))
+        on_main = tuple(map(int, werkzeug_version.groups())) >= (2, 1)
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with tempfile.TemporaryDirectory() as tmp:
             script = os.path.join(tmp, "app.py")
@@ -613,10 +618,10 @@ class ReloaderTest(unittest.TestCase):
                     stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 wait_for(lambda: get() is not None)
-                self.assertEqual(get(), "True 0")
+                self.assertEqual(get(), f"{on_main} 0")
                 later = time.time() + 10
                 os.utime(watched, (later, later))
-                wait_for(lambda: get() == "True 1")
+                wait_for(lambda: get() == f"{on_main} 1")
                 self.assertTrue(os.path.exists(os.path.join(markers, "exit0")))
             finally:
                 os.killpg(proc.pid, signal.SIGTERM)
