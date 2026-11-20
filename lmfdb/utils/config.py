@@ -106,7 +106,7 @@ class Configuration(_Configuration):
             "--restart",
             action="store_true",
             dest="core_restart",
-            help="enable restart mode. CAUTION: can cause segfaults on pages using PARI",
+            help="enable restart mode (reload the server when source files change)",
         )
 
         parser.add_argument(

@@ -109,10 +109,13 @@ if db.is_verifying:
 def main():
     info("main: ...done.")
     from .utils.config import Configuration
+    from .utils.reloader import serve_on_main_thread_with_reloader
 
     C = Configuration()
     flask_options = C.get_flask()
     flask_options['threaded'] = False
+    if flask_options.get("use_reloader"):
+        serve_on_main_thread_with_reloader()
     cocalc_options = C.get_cocalc()
 
     if "profiler" in flask_options and flask_options["profiler"]:
