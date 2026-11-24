@@ -373,7 +373,7 @@ class UtilsTest(unittest.TestCase):
                 ("nf_fields", {'degree': 1}, "number fields with degree 1"),
                 ("nf_fields", {'degree': 14, 'r2': 1, 'disc_sign': 1}, "number fields with incompatible conditions: signature and discriminant"),
                 ("nf_fields", {'degree': 2, 'r2': 1, 'class_number': 17}, "number fields with signature [0,1], class number at most 100 (except 98)"),
-                ("nf_fields", {'degree': 2, 'r2': 1, 'class_group': [2, 2, 2, 2, 2, 2, 2]}, "number fields with signature [0,1], class group of exponent 2", "depends on GRH"),
+                ("nf_fields", {'degree': 2, 'r2': 1, 'class_group': [2, 2, 2, 2, 2, 2, 2]}, "number fields with signature [0,1], class group of exponent 2"),
                 ("nf_fields", {'degree': 5, 'rd': {'$gte': 40, '$lte': 60}, 'grd': {'$gte': 20, '$lte': 30}}, "number fields with incompatible conditions: root discriminant and Galois root discriminant"),
                 ("nf_fields", {'degree': 2, 'rd': {'$gte': 30, '$lte': 40}, 'disc_abs': {'$gte': 10000, '$lte': 20000}}, "number fields with absolute discriminant at most 1656109"),
                 ("nf_fields", {'degree': 6, 'r2': 0, 'galois_label': '6T11', 'disc_abs': {'$gte': 1200000000, '$lte': 1800000000}}, "number fields with degree 6, signature [6,0], Galois group 6T11, absolute discriminant at most 1838265625"),

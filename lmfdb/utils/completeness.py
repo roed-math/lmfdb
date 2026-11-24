@@ -2535,10 +2535,12 @@ class NFBound(ColTest):
                 reasons.add("signature [0,1], class number at most 100 (except 98)")
                 return True, None
 
-            # We can also use https://msp.org/obs/2019/2-1/obs-v2-n1-p16-s.pdf
+            # We can also use Table 1 of https://msp.org/obs/2019/2-1/obs-v2-n1-p16-s.pdf.  It relies on
+            # GRH only through L(sigma,chi_D) != 0 for sigma > 1/2, which is covered by the proof of
+            # GRH for Dirichlet L-functions (https://math.mit.edu/~drew/grh/).
             if isinstance(C, list) and all(c == 2 for c in C):
                 reasons.add("signature [0,1], class group of exponent 2")
-                return True, "depends on GRH"
+                return True, None
 
         if n > 2 and any(col in query for col in ["class_group", "class_number", "narrow_class_group", "narrow_class_number"]):
             caveat = "depends on GRH"
