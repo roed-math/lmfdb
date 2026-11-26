@@ -1,0 +1,44 @@
+{% extends 'homepage.html' %}
+
+{% block content %}
+
+<div class="stats-summary">
+  {{ info.stats.short_summary | safe }}
+</div>
+
+<h2> Browse </h2>
+
+<table class="browse">
+  <tr>
+    <td>By {{ KNOWL('drinfeld.base_field', 'base field') }}:</td>
+    <td>
+    {% for q, n in info.fields %}
+      {% if loop.first or info.fields[loop.index0 - 1][0] != q %}
+        {% if not loop.first %}<br>{% endif %}
+        $q = {{ q }}$:&nbsp;
+      {% endif %}
+      <a href="?q={{ q }}&n={{ n }}">$\F_{ {{ q**n }} }$</a>&nbsp;
+    {% endfor %}
+    </td>
+  </tr><tr>
+    <td>By {{ KNOWL('drinfeld.rank', 'rank') }}:</td>
+    <td>{% for r in info.ranks %} <a href="?rank={{ r }}">{{ r }}</a>&nbsp; {% endfor %}</td>
+  </tr><tr>
+    <td colspan="2">By <a href="?height=1">height 1</a>&nbsp;&nbsp;&nbsp; <a href="?commutative_endomorphisms=no">noncommutative endomorphism algebra</a></td>
+  </tr><tr>
+    <td colspan="2">A <a href="{{ url_for('.random_isogeny_class') }}">random isogeny class</a></td>
+  </tr>
+</table>
+
+<h2> {{ KNOWL('intro.search', 'Search') }} </h2>
+
+<form class='search'>
+  {{ info.search_array.html() | safe }}
+</form>
+
+<h2> Find </h2>
+<form>
+  {{ info.search_array.jump_box(info) | safe }}
+</form>
+
+{% endblock %}

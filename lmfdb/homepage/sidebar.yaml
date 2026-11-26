@@ -116,6 +116,10 @@
     - title: Abelian varieties over $\F_{q}$
       url_for: "abvarfq.abelian_varieties"
       colspan: onecolumn
+    - title: Drinfeld modules over $\F_{q}$
+      url_for: "drinfeld.index_Fq"
+      status: beta
+      colspan: onecolumn
     - title: Belyi maps
       url_for: "belyi.index"
       colspan: onecolumn

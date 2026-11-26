@@ -1,0 +1,50 @@
+{% extends "homepage.html" %}
+
+{% block content %}
+
+<h2> {{ KNOWL('drinfeld.definition', 'Drinfeld module') }} </h2>
+
+<p>
+  The Drinfeld $\F_{ {{ obj.q }} }[T]$-module $\phi$ of {{ KNOWL('drinfeld.rank', 'rank') }} ${{ obj.rank }}$
+  over $L = {{ obj.L_tex }}$ given by
+</p>
+<p align="center">$\phi_T = {{ obj.ore_poly_tex }}$</p>
+
+<h2> Invariants </h2>
+
+<table>
+  <tr><td>{{ KNOWL('drinfeld.base_field', 'Base field') }}:</td><td>$L = {{ obj.L_tex }}$, of degree $n = {{ obj.n }}$ over $\F_q = {{ obj.Fq_tex }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.rank', 'Rank') }}:</td><td>${{ obj.rank }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.structure_map', '$\\gamma(T)$') }}:</td><td>${{ obj.gamma_tex }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.a_characteristic', 'Characteristic') }}:</td><td>$\mathfrak{p} = ({{ obj.char_poly_tex }})$, of degree ${{ obj.char_degree }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.height', 'Height') }}:</td><td>{{ obj.height_tex | safe }}</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.isogeny_class', 'Isogeny class') }}:</td><td><a href="{{ url_for('.by_label', label=obj.isogeny_label) }}">{{ obj.isogeny_label }}</a></td></tr>
+  <tr><td>{{ KNOWL('drinfeld.frobenius_charpoly', 'Frobenius polynomial') }}:</td><td>${{ obj.frob_poly_tex }}$</td></tr>
+</table>
+
+{% if obj.generators %}
+<p>
+  {% for s in obj.generators %}{{ s | safe }}. {% endfor %}
+</p>
+{% endif %}
+
+<h2> {{ KNOWL('drinfeld.automorphism_group', 'Automorphism group') }} </h2>
+
+<p>$\mathrm{Aut}_L(\phi) \cong {{ obj.aut_tex }}$, of order ${{ obj.automorphisms }}$.</p>
+
+<h2> {{ KNOWL('drinfeld.endomorphism_ring', 'Endomorphism ring') }} </h2>
+
+<p>
+  $\mathrm{End}_L(\phi)$ is free of rank ${{ obj.endomorphisms_tex | length }}$ as a module over $\F_q[T]$ acting through $\phi$, with basis
+</p>
+<ul>
+  {% for u in obj.endomorphisms_tex %}
+  <li>${{ u }}$</li>
+  {% endfor %}
+</ul>
+
+<h2> {{ KNOWL('drinfeld.rational_points', 'Rational points') }} </h2>
+
+<p>As an $\F_q[T]$-module, $\phi(L) \cong {{ obj.module_points_tex }}$.</p>
+
+{% endblock %}
