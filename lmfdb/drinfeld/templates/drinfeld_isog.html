@@ -1,0 +1,77 @@
+{% extends "homepage.html" %}
+
+{% block content %}
+
+<h2> {{ KNOWL('drinfeld.isogeny_class', 'Isogeny class') }} </h2>
+
+<p>
+  {{ KNOWL('drinfeld.definition', 'Drinfeld') }} $\F_{ {{ obj.q }} }[T]$-modules of {{ KNOWL('drinfeld.rank', 'rank') }} ${{ obj.rank }}$
+  over $L = {{ obj.L_tex }}$ with {{ KNOWL('drinfeld.frobenius_charpoly', 'Frobenius polynomial') }}
+</p>
+<p align="center">$f(X) = {{ obj.frob_poly_tex }}$</p>
+
+<h2> Invariants </h2>
+
+<table>
+  <tr><td>{{ KNOWL('drinfeld.base_field', 'Base field') }}:</td><td>$L = {{ obj.L_tex }}$, of degree $n = {{ obj.n }}$ over $\F_q = {{ obj.Fq_tex }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.rank', 'Rank') }}:</td><td>${{ obj.rank }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.a_characteristic', 'Characteristic') }}:</td><td>$\mathfrak{p} = ({{ obj.char_poly_tex }})$, of degree ${{ obj.char_degree }}$, with $m = [L : \F_q[T]/\mathfrak{p}] = {{ obj.m }}$</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.structure_map', '$\\gamma(T)$') }}:</td><td>
+    {% if obj.possible_gamma|length == 1 %}
+    ${{ obj.possible_gamma_tex }}$
+    {% else %}
+    one of ${{ obj.possible_gamma_tex }}$
+    {% endif %}
+    {% if obj.gamma_used and obj.possible_gamma|length > 1 %}
+    (the representatives below use $\gamma(T) = {{ obj.gamma_used }}$; the other roots give their Galois conjugates)
+    {% endif %}
+  </td></tr>
+  <tr><td>{{ KNOWL('drinfeld.height', 'Height') }}:</td><td>{{ obj.height_tex | safe }}</td></tr>
+  <tr><td>{{ KNOWL('drinfeld.endomorphism_algebra', 'Endomorphism algebra') }}:</td><td>
+    {% if obj.commutative_endomorphisms %}commutative{% else %}noncommutative{% endif %}
+  </td></tr>
+  <tr><td>{{ KNOWL('drinfeld.geometric_extension_degree', 'Geometric extension degree') }}:</td><td>
+    ${{ obj.geometric_extension_degree }}$
+    {% if obj.geometric_extension_degree == 1 %}
+    (all geometric endomorphisms are defined over $L$)
+    {% else %}
+    (all geometric endomorphisms are defined over $\F_{ {{ obj.q }}^{ {{ obj.n * obj.geometric_extension_degree }} } }$)
+    {% endif %}
+  </td></tr>
+</table>
+
+{% if obj.generators %}
+<p>
+  {% for s in obj.generators %}{{ s | safe }}. {% endfor %}
+</p>
+{% endif %}
+
+<h2> {{ KNOWL('drinfeld.isomorphism', 'Isomorphism classes') }} </h2>
+
+<p>
+  This isogeny class contains ${{ obj.size }}$ isomorphism classes over $L$, with
+  {{ KNOWL('drinfeld.isogeny_class_size', 'weighted count') }} $\sum 1/\#\mathrm{Aut}(\phi) = {{ obj.weighted_size_tex }}$.
+</p>
+
+<table class="ntdata">
+  <thead>
+    <tr>
+      <th>{{ KNOWL('drinfeld.label', 'Label') }}</th>
+      <th>{{ KNOWL('drinfeld.definition', '$\\phi_T$') }}</th>
+      <th>{{ KNOWL('drinfeld.automorphism_group', '$\\#\\mathrm{Aut}(\\phi)$') }}</th>
+      <th>{{ KNOWL('drinfeld.rational_points', '$\\phi(L)$') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for m in obj.modules_sorted %}
+    <tr>
+      <td><a href="{{ url_for('.by_label', label=m.label) }}">{{ m.label }}</a></td>
+      <td>${{ m.ore_tex }}$</td>
+      <td align="center">${{ m.automorphisms }}$</td>
+      <td>${{ m.points_tex }}$</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

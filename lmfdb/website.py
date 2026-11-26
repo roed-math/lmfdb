@@ -79,6 +79,8 @@ from . import abvar
 assert abvar
 from .abvar import fq
 assert fq
+from . import drinfeld
+assert drinfeld
 from . import modlmf
 assert modlmf
 from . import modl_galois_representations
