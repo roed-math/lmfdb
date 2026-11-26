@@ -1,4 +1,8 @@
+import pytest
+
 from lmfdb.tests import LmfdbTest
+from lmfdb.drinfeld.main import char_poly_coefficients
+from lmfdb.utils.search_parsing import SearchParsingError
 
 
 class DrinfeldTest(LmfdbTest):
@@ -27,6 +31,32 @@ class DrinfeldTest(LmfdbTest):
     def test_module_search(self):
         page = self.tc.get("/DrinfeldModule/Fq/?search_type=Modules&q=2&n=2&rank=2").get_data(as_text=True)
         assert "18 matches" in page
+
+    def test_char_poly_parser(self):
+        assert char_poly_coefficients("T^2 + T + 2", 3) == [2, 1, 1]
+        assert char_poly_coefficients("T**2 - 1", 3) == [2, 0, 1]
+        assert char_poly_coefficients("T + b", 4) == [2, 1]
+        assert char_poly_coefficients("(T + b + 1)(T + b)", 4) == [1, 1, 1]
+        assert char_poly_coefficients("T^100", 2)[-1] == 1
+        # Degree is bounded before any power or product is formed
+        for inp in ["T^101", "T**1000", "T**100000000000", "T^999^999", "T**2**3",
+                    "(T^999)^999", "(T^50)(T^51)", "((T^10)^10)^10", "T^(9^9)"]:
+            with pytest.raises(SearchParsingError):
+                char_poly_coefficients(inp, 2)
+        for inp, q in [("2*T + 1", 3), ("T + b", 3), ("__import__('os')", 2), ("T + 1", 6), ("T + 1", 2**20)]:
+            with pytest.raises(SearchParsingError):
+                char_poly_coefficients(inp, q)
+
+    def test_char_poly_search_bounded(self):
+        page = self.tc.get("/DrinfeldModule/Fq/?q=2&char_poly=(T^999)^999").get_data(as_text=True)
+        assert "degree must be at most" in page
+
+    def test_filters_across_search_types(self):
+        # isogeny invariants restrict module searches, and vice versa
+        page = self.tc.get("/DrinfeldModule/Fq/?search_type=Modules&q=2&n=2&rank=2&height=2").get_data(as_text=True)
+        assert "7 matches" in page
+        page = self.tc.get("/DrinfeldModule/Fq/?q=2&n=2&rank=2&automorphisms=3").get_data(as_text=True)
+        assert "7 matches" in page
 
     def test_char_poly_needs_q(self):
         page = self.tc.get("/DrinfeldModule/Fq/?char_poly=T%2B1").get_data(as_text=True)

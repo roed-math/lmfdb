@@ -113,31 +113,118 @@ def drinfeld_jump(info):
     return redirect(url_for(".index_Fq"))
 
 
-CHAR_POLY_RE = re.compile(r"[0-9Tb+\-*^() ]+")
+MAX_CHAR_INPUT = 200
+MAX_CHAR_DEGREE = 100
+MAX_CHAR_Q = 2**16
+CHAR_TOKEN_RE = re.compile(r"\s*(?:(\d+)|(\*\*|[-+*^()Tb]))")
+
+
+def char_poly_coefficients(inp, q):
+    """
+    The encoded coefficient list of a monic polynomial in T over F_q, written
+    with integers, T, b (the Conway generator of F_q), +, -, *, parentheses and
+    a single power ^ or ** of an integer.  The string is parsed here rather than
+    by Sage, so that the degree can be bounded before any product or power is formed.
+    """
+    if len(inp) > MAX_CHAR_INPUT:
+        raise SearchParsingError("It must have at most %s characters" % MAX_CHAR_INPUT)
+    if not isinstance(q, int) or not 1 < q <= MAX_CHAR_Q or not ZZ(q).is_prime_power():
+        raise SearchParsingError("To search on the characteristic, also give a single prime power q")
+    p, k = ZZ(q).is_prime_power(get_data=True)
+    try:
+        Fq = GF(p) if k == 1 else GF(q, "b", modulus=conway_polynomial(p, k))
+    except (RuntimeError, NotImplementedError):
+        raise SearchParsingError("There is no data for q = %s" % q)
+    A = PolynomialRing(Fq, "T")
+
+    tokens, pos = [], 0
+    inp = inp.rstrip()
+    while pos < len(inp):
+        m = CHAR_TOKEN_RE.match(inp, pos)
+        if m is None:
+            raise SearchParsingError("It must be a polynomial in T, such as T^2 + T + 1")
+        tokens.append(m.group(1) or m.group(2))
+        pos = m.end()
+    tokens.append(None)
+    i = 0
+
+    def peek():
+        return tokens[i]
+
+    def take():
+        nonlocal i
+        i += 1
+        return tokens[i - 1]
+
+    def deg(f):
+        return max(f.degree(), 0)
+
+    def atom():
+        tok = take()
+        if tok is not None and tok.isdigit():
+            return A(int(tok))
+        if tok == "T":
+            return A.gen()
+        if tok == "b":
+            if k == 1:
+                raise SearchParsingError("b only makes sense when q is not prime")
+            return A(Fq.gen())
+        if tok == "(":
+            val = expr()
+            if take() != ")":
+                raise SearchParsingError("Unbalanced parentheses")
+            return val
+        raise SearchParsingError("Unexpected %s" % (tok or "end of input"))
+
+    def power():
+        base = atom()
+        if peek() in ("^", "**"):
+            take()
+            e = take()
+            if e is None or not e.isdigit():
+                raise SearchParsingError("Exponents must be integers, such as T^2")
+            if int(e) > MAX_CHAR_DEGREE or deg(base) * int(e) > MAX_CHAR_DEGREE:
+                raise SearchParsingError("The degree must be at most %s" % MAX_CHAR_DEGREE)
+            base = base ** int(e)
+        return base
+
+    def term():
+        val = power()
+        while peek() == "*" or (peek() is not None and (peek().isdigit() or peek() in ("T", "b", "("))):
+            if peek() == "*":
+                take()
+            f = power()
+            if deg(val) + deg(f) > MAX_CHAR_DEGREE:
+                raise SearchParsingError("The degree must be at most %s" % MAX_CHAR_DEGREE)
+            val = val * f
+        return val
+
+    def expr():
+        sign = 1
+        if peek() in ("+", "-"):
+            sign = -1 if take() == "-" else 1
+        val = sign * term()
+        while peek() in ("+", "-"):
+            sign = -1 if take() == "-" else 1
+            val = val + sign * term()
+        return val
+
+    P = expr()
+    if peek() is not None:
+        raise SearchParsingError("Unexpected %s" % peek())
+    if not P.is_monic():
+        raise SearchParsingError("It must be monic")
+    return [sum(int(c) * p**j for j, c in enumerate(a.polynomial().list())) if k > 1 else int(a)
+            for a in P.list()]
 
 
 @search_parser
 def parse_char_poly(inp, query, qfield):
-    """
-    The A-characteristic P, entered as a monic polynomial in T over F_q (with b
-    the Conway generator of F_q), stored as its list of encoded coefficients.
-    """
-    # Exponents are capped since the string is evaluated by Sage
-    if not CHAR_POLY_RE.fullmatch(inp) or re.search(r"\^(?!\s*\d{1,3}(?!\d))", inp):
-        raise SearchParsingError("It must be a polynomial in T, such as T^2 + T + 1")
-    q = query.get("q")
-    if not isinstance(q, int) or not ZZ(q).is_prime_power():
-        raise SearchParsingError("To search on the characteristic, also give a single prime power q")
-    p, k = ZZ(q).is_prime_power(get_data=True)
-    Fq = GF(p) if k == 1 else GF(q, "b", modulus=conway_polynomial(p, k))
-    try:
-        P = PolynomialRing(Fq, "T")(inp)
-    except (TypeError, ValueError, SyntaxError, NameError):
-        raise SearchParsingError("Unable to read it as a polynomial in T over F_%s" % q)
-    if not P.is_monic():
-        raise SearchParsingError("It must be monic")
-    query[qfield] = [sum(int(c) * p**i for i, c in enumerate(a.polynomial().list())) if k > 1 else int(a)
-                     for a in P.list()]
+    query[qfield] = char_poly_coefficients(inp, query.get("q"))
+
+
+# Columns with the same name and meaning in both tables
+COMMON_COLUMNS = ["q", "n", "rank", "p", "char_poly"]
 
 
 def common_parse(info, query):
@@ -146,6 +233,14 @@ def common_parse(info, query):
     parse_ints(info, query, "rank")
     parse_ints(info, query, "p", name="characteristic of F_q")
     parse_char_poly(info, query, "char_poly", name="A-characteristic")
+
+
+def isogeny_parse(info, query):
+    parse_ints(info, query, "m")
+    parse_ints(info, query, "height")
+    parse_ints(info, query, "geometric_extension_degree")
+    parse_ints(info, query, "size")
+    parse_bool(info, query, "commutative_endomorphisms")
 
 
 isog_columns = SearchColumns([
@@ -178,11 +273,12 @@ isog_columns = SearchColumns([
 )
 def drinfeld_isog_search(info, query):
     common_parse(info, query)
-    parse_ints(info, query, "m")
-    parse_ints(info, query, "height")
-    parse_ints(info, query, "geometric_extension_degree")
-    parse_ints(info, query, "size")
-    parse_bool(info, query, "commutative_endomorphisms")
+    isogeny_parse(info, query)
+    # Restrictions on modules select the isogeny classes containing a matching module
+    module_query = {col: query[col] for col in COMMON_COLUMNS if col in query}
+    parse_ints(info, module_query, "automorphisms")
+    if "automorphisms" in module_query:
+        query["label"] = {"$in": db.drinfeld_modules.distinct("isogeny_label", module_query)}
 
 
 module_columns = SearchColumns([
@@ -212,6 +308,12 @@ module_columns = SearchColumns([
 def drinfeld_module_search(info, query):
     common_parse(info, query)
     parse_ints(info, query, "automorphisms")
+    # Restrictions on isogeny invariants apply to each module's isogeny class
+    isogeny_query = {col: query[col] for col in COMMON_COLUMNS if col in query}
+    restricted = len(isogeny_query)
+    isogeny_parse(info, isogeny_query)
+    if len(isogeny_query) > restricted:
+        query["isogeny_label"] = {"$in": db.drinfeld_isog.distinct("label", isogeny_query)}
 
 
 class DrinfeldSearchArray(SearchArray):
@@ -258,6 +360,8 @@ class DrinfeldSearchArray(SearchArray):
                       label="Automorphisms", example="3", example_span="1 or 3-8")
         count = CountBox()
 
+        # Both search types use every box: module restrictions select isogeny
+        # classes, and isogeny restrictions select modules by their class.
         self.browse_array = [
             [q, n],
             [rank, p],
@@ -266,22 +370,11 @@ class DrinfeldSearchArray(SearchArray):
             [geom, size],
             [aut, count],
         ]
-        self.isog_refine_array = [
+        self.refine_array = [
             [q, n, rank, p],
             [char_poly, m, height, commutative],
-            [geom, size],
+            [geom, size, aut],
         ]
-        self.module_refine_array = [
-            [q, n, rank, p],
-            [char_poly, aut],
-        ]
-
-    def main_array(self, info):
-        if info is None:
-            return self.browse_array
-        if self._st(info) == "Modules":
-            return self.module_refine_array
-        return self.isog_refine_array
 
     def search_types(self, info):
         if info is None:
